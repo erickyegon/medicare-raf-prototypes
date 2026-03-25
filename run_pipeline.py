@@ -48,12 +48,13 @@ def stage_banner(n: int, title: str):
 def main():
     os.makedirs("data/processed", exist_ok=True)
     os.makedirs("reports/figures", exist_ok=True)
+    os.makedirs("docs/figures", exist_ok=True)
 
     t0 = time.time()
 
     # ── STAGE 1: DATA GENERATION ─────────────────────────────────
     stage_banner(1, "SYNTHETIC DATA GENERATION")
-    n_bene = 1_000
+    n_bene = 50_000
     print(f"Generating {n_bene:,}-beneficiary Medicare cohort...")
     cohort = generate_beneficiary_cohort(n=n_bene)
     panel  = generate_utilization_panel(cohort, intervention_effect_pmpm=-420.0)
@@ -105,6 +106,7 @@ def main():
     axes[1].set_title("Mean RAF Score by Risk Tier", fontsize=12, fontweight="bold")
     plt.tight_layout()
     plt.savefig("reports/figures/01_raf_distribution.png", dpi=150, bbox_inches="tight")
+    plt.savefig("docs/figures/01_raf_distribution.png",    dpi=150, bbox_inches="tight")
     plt.close()
     print("  → Figure saved: reports/figures/01_raf_distribution.png")
 
@@ -131,6 +133,7 @@ def main():
     ax.legend(fontsize=9)
     plt.tight_layout()
     plt.savefig("reports/figures/02a_xgboost_importance.png", dpi=150, bbox_inches="tight")
+    plt.savefig("docs/figures/02a_xgboost_importance.png",    dpi=150, bbox_inches="tight")
     plt.close()
     print("  → Figure saved: reports/figures/02a_xgboost_importance.png")
 
@@ -145,6 +148,7 @@ def main():
     ax.legend(fontsize=9)
     plt.tight_layout()
     plt.savefig("reports/figures/02b_shap_importance.png", dpi=150, bbox_inches="tight")
+    plt.savefig("docs/figures/02b_shap_importance.png",    dpi=150, bbox_inches="tight")
     plt.close()
     print("  → Figure saved: reports/figures/02b_shap_importance.png")
 
@@ -157,8 +161,50 @@ def main():
     plt.title("SHAP Beeswarm Plot — High-Risk Prediction", fontsize=12, fontweight="bold")
     plt.tight_layout()
     plt.savefig("reports/figures/02c_shap_beeswarm.png", dpi=150, bbox_inches="tight")
+    plt.savefig("docs/figures/02c_shap_beeswarm.png",    dpi=150, bbox_inches="tight")
     plt.close()
     print("  → Figure saved: reports/figures/02c_shap_beeswarm.png")
+
+    # Plot 2d: Per-member SHAP waterfall — highest-risk member in test set
+    feature_cols = results["model"].feature_cols
+    high_risk_idx_list = preds.index[preds["actual_tier"] == "high"].tolist()
+    if high_risk_idx_list:
+        top_member_pos = preds.loc[high_risk_idx_list, "predicted_cost"].idxmax()
+        member_pos = preds.index.get_loc(top_member_pos)
+        sv = shap_values[member_pos]                        # (n_features,)
+        feat_vals = X_test[feature_cols].iloc[member_pos]
+
+        top_n = 12
+        abs_sv   = np.abs(sv)
+        top_idx  = np.argsort(abs_sv)[::-1][:top_n]
+        # Sort by contribution value for waterfall readability
+        sorted_idx   = top_idx[np.argsort(sv[top_idx])]
+        sorted_names = [feature_cols[i] for i in sorted_idx]
+        sorted_vals  = sv[sorted_idx]
+
+        fig, ax = plt.subplots(figsize=(10, 6))
+        colors = [ACCENT if v >= 0 else "#C0392B" for v in sorted_vals]
+        bars = ax.barh(range(len(sorted_names)), sorted_vals, color=colors, alpha=0.85, edgecolor="white")
+        ax.set_yticks(range(len(sorted_names)))
+        ax.set_yticklabels(sorted_names, fontsize=10)
+        ax.axvline(0, color="black", linewidth=1.0)
+        for bar, val in zip(bars, sorted_vals):
+            xpos = val + (0.001 if val >= 0 else -0.001)
+            ha   = "left" if val >= 0 else "right"
+            ax.text(xpos, bar.get_y() + bar.get_height() / 2,
+                    f"{val:+.3f}", va="center", ha=ha, fontsize=9)
+        raf_val = feat_vals.get("raf_score", float("nan"))
+        ax.set_xlabel("SHAP Contribution to High-Risk Score", fontsize=11)
+        ax.set_title(
+            f"SHAP Waterfall — Example High-Risk Member  |  RAF {raf_val:.3f}\n"
+            "Blue bars push toward HIGH risk · Red bars push toward lower risk",
+            fontsize=11, fontweight="bold"
+        )
+        plt.tight_layout()
+        plt.savefig("reports/figures/02d_shap_waterfall.png", dpi=150, bbox_inches="tight")
+        plt.savefig("docs/figures/02d_shap_waterfall.png",    dpi=150, bbox_inches="tight")
+        plt.close()
+        print("  → Figure saved: reports/figures/02d_shap_waterfall.png")
 
     # Plot 3: Predicted vs Actual cost
     fig, ax = plt.subplots(figsize=(7, 5))
@@ -174,6 +220,7 @@ def main():
     ax.legend(fontsize=9)
     plt.tight_layout()
     plt.savefig("reports/figures/03_predicted_vs_actual.png", dpi=150, bbox_inches="tight")
+    plt.savefig("docs/figures/03_predicted_vs_actual.png",    dpi=150, bbox_inches="tight")
     plt.close()
     print("  → Figure saved: reports/figures/03_predicted_vs_actual.png")
 
@@ -221,6 +268,7 @@ def main():
     ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f"${x:,.0f}"))
     plt.tight_layout()
     plt.savefig("reports/figures/04_did_results.png", dpi=150, bbox_inches="tight")
+    plt.savefig("docs/figures/04_did_results.png",    dpi=150, bbox_inches="tight")
     plt.close()
     print("\n  → Figure saved: reports/figures/04_did_results.png")
 

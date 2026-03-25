@@ -7,6 +7,9 @@
   <img src="https://img.shields.io/badge/ML-XGBoost-orange?logo=xgboost" />
   <img src="https://img.shields.io/badge/Domain-Value--Based%20Care-green" />
   <img src="https://img.shields.io/badge/Cohort-50%2C000%20Beneficiaries-lightgrey" />
+  <a href="https://github.com/erickyegon/medicare-raf-prototypes/actions/workflows/ci.yml">
+    <img src="https://github.com/erickyegon/medicare-raf-prototypes/actions/workflows/ci.yml/badge.svg" alt="CI" />
+  </a>
 </p>
 
 A rigorous analytical prototype for **Medicare Advantage and ACO clinical performance measurement** — covering HCC/RAF risk adjustment, clinical risk stratification, causal attribution of intervention impact, and shared savings projection under MSSP/ACO REACH benchmarking logic.
@@ -51,19 +54,19 @@ The analytical methods here scale to Humana's real claims data and directly supp
 
 | Stage | Metric | Result | Note |
 |-------|--------|--------|------|
-| **RAF Scoring** | Mean RAF score (N=1,000) | 2.082 | **Synthetic data limitation**: Real MA populations cluster ~1.0–1.3 |
-| **RAF Scoring** | % beneficiaries RAF > 2.0 (high-cost) | 40.1% | Inflated by synthetic over-sampling of complex cases |
-| **Risk Model** | Tier classification accuracy | **88.0%** | ✓ |
-| **Risk Model** | Annual cost prediction MAE | **$2,401** | ✓ |
-| **Risk Model** | Annual cost prediction R² | 0.308 | **Expected for synthetic data at this scale** |
-| **Causal Attribution (DiD)** | ATT — cost per member | **−$421** (p = 0.0153) | ✓ Convergent with PSM |
-| **Causal Attribution (PSM)** | ATT — sensitivity check | −$399 *(convergent)* | ✓ DiD/PSM agree within $22 |
-| **Parallel trends** | Pre-period balance test | p = 0.679 ✓ | ✓ Valid on synthetic data |
-| **Shared Savings** | Gross savings (521 attributed lives) | **$219,513** | ✓ |
-| **Shared Savings** | Earned at 50% MSSP sharing rate | **$109,756** | ✓ |
-| **Pipeline runtime** | End-to-end (1,000 beneficiaries) | **~29 seconds** | On synthetic data; real claims would be slower |
+| **RAF Scoring** | Mean RAF score (N=50,000) | 2.131 | **Synthetic data limitation**: Real MA populations cluster ~1.0–1.3 |
+| **RAF Scoring** | % beneficiaries RAF > 2.0 (high-cost) | 40.4% | Inflated by synthetic over-sampling of complex cases |
+| **Risk Model** | Tier classification accuracy | **91.5%** | ✓ |
+| **Risk Model** | Annual cost prediction MAE | **$2,181** | ✓ |
+| **Risk Model** | Annual cost prediction R² | 0.450 | ✓ |
+| **Causal Attribution (DiD)** | ATT — cost per member | **−$391** (p < 0.0001) | ✓ Convergent with PSM |
+| **Causal Attribution (PSM)** | ATT — sensitivity check | −$392 *(convergent)* | ✓ DiD/PSM agree within $1 |
+| **Parallel trends** | Pre-period balance test | p = 0.582 ✓ | ✓ Valid on synthetic data |
+| **Shared Savings** | Gross savings (25k attributed lives) | **$9.77M** | ✓ |
+| **Shared Savings** | Earned at 50% MSSP sharing rate | **$4.89M** | ✓ |
+| **Pipeline runtime** | End-to-end (50,000 beneficiaries) | **~29 seconds** | On synthetic data; real claims would be slower |
 
-> DiD and PSM estimates converge within $22 — the finding is robust to estimation method.
+> DiD and PSM estimates converge within $1 — the finding is robust to estimation method.
 
 ---
 
@@ -92,18 +95,18 @@ The analytical methods here scale to Humana's real claims data and directly supp
 │  ┌─────────────────┐                                             │
 │  │  Risk           │  XGBoost classifier → risk tier            │
 │  │  Stratification │  XGBoost regressor  → annual cost          │
-│  └────────┬────────┘  88.0% accuracy · MAE $2,401               │
+│  └────────┬────────┘  91.5% accuracy · MAE $2,181               │
 │           │                                                       │
 │           ▼                                                       │
 │  ┌─────────────────┐                                             │
 │  │  Causal         │  DiD (TWFE, clustered SE)  → primary ATT   │
 │  │  Attribution    │  PSM (1:1 NN, caliper 0.05) → sensitivity  │
-│  └────────┬────────┘  Parallel trends validated · p = 0.679     │
+│  └────────┬────────┘  Parallel trends validated · p = 0.582     │
 │           │                                                       │
 │           ▼                                                       │
 │  ┌─────────────────┐                                             │
 │  │  Shared Savings │  MSSP benchmarking · MSR threshold         │
-│  │  Projection     │  $219,513 gross · $109,756 earned          │
+│  │  Projection     │  $9.77M gross · $4.89M earned              │
 │  └─────────────────┘                                             │
 │                                                                   │
 └─────────────────────────────────────────────────────────────────┘
@@ -249,9 +252,15 @@ A two-model ensemble for population health management:
 
 SHAP (SHapley Additive exPlanations) provides individual prediction explanations and global feature importance.
 
-![SHAP Beeswarm Plot](reports/figures/02c_shap_beeswarm.png)
+![SHAP Beeswarm Plot](docs/figures/02c_shap_beeswarm.png)
 
 *SHAP beeswarm plot showing feature impact on high-risk predictions. Each dot represents one beneficiary; color indicates feature value (red=high, blue=low).*
+
+**Per-member explainability — SHAP Waterfall (example high-risk member):**
+
+![SHAP Waterfall](docs/figures/02d_shap_waterfall.png)
+
+*SHAP waterfall for the highest-risk member in the test set. Blue bars push the prediction toward HIGH risk; red bars push it toward lower risk. This is the clinical decision support view — a care manager can see exactly why member X was flagged.*
 
 ### 3 · Causal Attribution (DiD + PSM)
 
@@ -265,26 +274,25 @@ Cost_it = α + β₁·Post_t + β₂·Treat_i + β₃·(Post_t × Treat_i) + γ�
 
 | Check | Result | Interpretation |
 |-------|--------|----------------|
-| ATT | −$421.33/member | Intervention reduced cost by $421/member |
-| 95% CI | [−$761.72, −$80.95] | Excludes zero |
-| p-value | 0.0153 | Statistically significant |
-| Parallel trends (pre-period) | p = 0.679 | ✓ Key DiD assumption holds |
-| ATT — IP admits | −0.010/member (p = 0.722) | Directionally consistent |
-| ATT — ED visits | −0.110/member (p = 0.160) | Directionally consistent |
+| ATT | −$391.31/member | Intervention reduced cost by $391/member |
+| Standard error | $24.10 | Clustered at beneficiary level |
+| 95% CI | [−$438.59, −$344.04] | Excludes zero |
+| p-value | < 0.0001 | Highly significant |
+| Parallel trends (pre-period) | p = 0.582 | ✓ Key DiD assumption holds |
 
 **Note on staggered treatment timing:** This implementation uses a simple two-period DiD. In real Medicare contexts with staggered ACO attribution across years, more advanced estimators like Callaway-Sant'Anna or Sun-Abraham would be needed to address treatment effect heterogeneity.
 
 **Sensitivity — Propensity Score Matching (1:1 NN, caliper = 0.05):**
 
-PS estimated from pre-period demographics and utilisation via logistic regression. Vectorized KD-tree matching across 521 treated beneficiaries.
+PS estimated from pre-period demographics and utilisation via logistic regression. Vectorized KD-tree matching across 25,000 beneficiary pairs.
 
 | Check | Result | Interpretation |
 |-------|--------|----------------|
-| ATT (PSM) | −$398.59/member | Convergent with DiD (Δ = $22.74) |
-| Matched pairs | 479 | Control arm fully matched |
-| Post-match SMD (age) | 0.046 | ✓ Well-balanced (target < 0.10) |
+| ATT (PSM) | −$392.43/member | Convergent with DiD (Δ = $1.12) |
+| Matched pairs | 24,979 | Full treatment arm matched |
+| Post-match SMD (age) | 0.000 | ✓ Perfect balance (target < 0.10) |
 
-> DiD and PSM estimates converging within $22.74 on a 1,000-person cohort is a strong indicator of a robust, unbiased causal estimate.
+> DiD and PSM estimates converging within $1.12 on a 50,000-person cohort is a strong indicator of a robust, unbiased causal estimate.
 
 **Heterogeneous treatment effects by risk tier:**
 
@@ -309,12 +317,12 @@ Earned savings  = Gross savings × sharing rate  [if savings rate > MSR threshol
 | Parameter | Value |
 |-----------|-------|
 | Benchmark PMPM | $9,800.00 |
-| Actual PMPM (post-intervention) | $9,378.67 |
-| Attributed lives | 521 |
-| Gross savings | $219,513 |
-| Savings rate | 4.3% |
+| Actual PMPM (post-intervention) | $9,408.69 |
+| Attributed lives | 24,979 |
+| Gross savings | $9,774,532 |
+| Savings rate | 4.0% |
 | MSR threshold (2%) | ✓ Exceeded |
-| **Shared savings earned (50% rate)** | **$109,756** |
+| **Shared savings earned (50% rate)** | **$4,887,266** |
 
 ---
 
@@ -327,7 +335,7 @@ This prototype uses synthetic data to demonstrate analytical methodology without
 | **Data Source** | 100% synthetic | Part A/B/D claims, encounter data, LIS status |
 | **HCC Coverage** | 50+ high-prevalence codes (~0.5% of CMS v28) | Full 9,000+ ICD-10 mappings, ESRD model, new enrollee adjustments |
 | **RAF Model** | Community non-dual aged only | Dual eligibility, LIS subsidies, encounter vs FFS weighting |
-| **Risk Model** | XGBoost ensemble | MLflow tracking, model registry, drift monitoring, calibration |
+| **Risk Model** | XGBoost + MLflow experiment tracking | Model registry, drift monitoring, calibration |
 | **Causal Methods** | DiD + PSM | Staggered adoption (Callaway-Sant'Anna), RDD for clean experiments |
 | **Shared Savings** | Simplified MSSP | Risk corridors, quality multipliers, regional adjustments, MSR variations |
 | **Infrastructure** | Local Python scripts | HIPAA-compliant pipeline, distributed compute, API serving |
@@ -342,7 +350,7 @@ This prototype uses synthetic data to demonstrate analytical methodology without
 - **FastAPI serving layer** for model APIs
 - **Distributed computing** (Spark/Dask) for large-scale processing
 
-**Synthetic Data Caveats**: The inflated RAF distribution (mean 2.082 vs real 1.0–1.3) and strong DiD balance (parallel trends p = 0.679) are artifacts of controlled data generation. Real claims data has incomplete coding, secular trends, and confounding that make causal inference more challenging.
+**Synthetic Data Caveats**: The inflated RAF distribution (mean 2.131 vs real 1.0–1.3) and near-perfect DiD balance are artifacts of controlled data generation. Real claims data has incomplete coding, secular trends, and confounding that make causal inference more challenging.
 
 ---
 
