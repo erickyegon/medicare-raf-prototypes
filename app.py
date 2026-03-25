@@ -123,18 +123,53 @@ INTERACTION_TERMS = {
     ("has_ckd", "has_diabetes"):("CKD × Diabetes",     0.156),
 }
 
+# ── Auto-setup for Streamlit Cloud ────────────────────────────────────────
+def ensure_pipeline_output():
+    """
+    If processed data/results don't exist (e.g. fresh Streamlit Cloud container),
+    run the pipeline automatically with N=1,000 demo cohort.
+    Files are written to disk and cached for the session lifetime.
+    """
+    if os.path.exists("reports/results_summary.json"):
+        return  # Already have output — nothing to do
+
+    import subprocess
+    with st.spinner(
+        "First-time setup: generating demo data and running the analytics pipeline "
+        "(takes ~15–20 seconds on first load)..."
+    ):
+        proc = subprocess.run(
+            [sys.executable, "run_pipeline.py"],
+            capture_output=True,
+            text=True,
+            timeout=300,
+            env={**os.environ, "PYTHONIOENCODING": "utf-8", "N_BENE": "1000"},
+        )
+
+    if proc.returncode != 0:
+        st.error("Pipeline setup failed. Please refresh the page to try again.")
+        with st.expander("Error details"):
+            st.code((proc.stderr or proc.stdout or "No output")[-3000:])
+        st.stop()
+
+    st.rerun()  # Reload so all @st.cache_data loaders pick up the new files
+
+
 # ── Main ───────────────────────────────────────────────────────────────────
 def main():
     st.title("Medicare Clinical Performance Analytics")
     st.markdown("**Risk Adjustment · Risk Stratification · Shared Savings Attribution**")
+
+    # Auto-generate pipeline output on first load (Streamlit Cloud)
+    ensure_pipeline_output()
 
     cohort, panel, raf_data = load_data()
     results = load_results()
 
     if cohort is None or results is None:
         st.error(
-            "Pipeline output not found. Run `python run_pipeline.py` first, "
-            "then refresh this page."
+            "Pipeline output not found. This should have been generated automatically — "
+            "please refresh the page. If the error persists, run `python run_pipeline.py` locally."
         )
         return
 

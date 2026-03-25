@@ -54,7 +54,8 @@ def main():
 
     # ── STAGE 1: DATA GENERATION ─────────────────────────────────
     stage_banner(1, "SYNTHETIC DATA GENERATION")
-    n_bene = 50_000
+    # N_BENE env var lets Streamlit Cloud run a fast 1,000-member demo
+    n_bene = int(os.environ.get("N_BENE", 50_000))
     print(f"Generating {n_bene:,}-beneficiary Medicare cohort...")
     cohort = generate_beneficiary_cohort(n=n_bene)
     panel  = generate_utilization_panel(cohort, intervention_effect_pmpm=-420.0)
