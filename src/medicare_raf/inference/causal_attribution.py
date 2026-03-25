@@ -2,6 +2,7 @@
 causal_attribution.py — fast vectorized PSM via numpy
 """
 
+import os
 import warnings
 
 import matplotlib.pyplot as plt
@@ -245,6 +246,7 @@ def generate_love_plot(
     plt.tight_layout()
 
     if save_path:
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
         plt.savefig(save_path, dpi=150, bbox_inches="tight")
         plt.close()
     else:
