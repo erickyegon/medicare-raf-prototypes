@@ -51,19 +51,19 @@ The analytical methods here scale to Humana's real claims data and directly supp
 
 | Stage | Metric | Result | Note |
 |-------|--------|--------|------|
-| **RAF Scoring** | Mean RAF score (N=50,000) | 2.131 | **Synthetic data limitation**: Real MA populations cluster ~1.0–1.3 |
-| **RAF Scoring** | % beneficiaries RAF > 2.0 (high-cost) | 40.4% | Inflated by synthetic over-sampling of complex cases |
-| **Risk Model** | Tier classification accuracy | **91.5%** | ✓ |
-| **Risk Model** | Annual cost prediction MAE | **$2,181** | ✓ |
-| **Risk Model** | Annual cost prediction R² | 0.450 | **Poor for synthetic data**: On real claims, this would be concerning |
-| **Causal Attribution (DiD)** | ATT — cost per member | **−$391** (p < 0.0001) | ✓ Convergent with PSM |
-| **Causal Attribution (PSM)** | ATT — sensitivity check | −$392 *(convergent)* | ✓ DiD/PSM agree within $1 |
-| **Parallel trends** | Pre-period balance test | p = 0.582 ✓ | ✓ Valid on synthetic data |
-| **Shared Savings** | Gross savings (25k attributed lives) | **$9.77M** | ✓ |
-| **Shared Savings** | Earned at 50% MSSP sharing rate | **$4.89M** | ✓ |
-| **Pipeline runtime** | End-to-end (50k beneficiaries) | **29 seconds** | On synthetic data; real claims would be slower |
+| **RAF Scoring** | Mean RAF score (N=1,000) | 2.082 | **Synthetic data limitation**: Real MA populations cluster ~1.0–1.3 |
+| **RAF Scoring** | % beneficiaries RAF > 2.0 (high-cost) | 40.1% | Inflated by synthetic over-sampling of complex cases |
+| **Risk Model** | Tier classification accuracy | **88.0%** | ✓ |
+| **Risk Model** | Annual cost prediction MAE | **$2,401** | ✓ |
+| **Risk Model** | Annual cost prediction R² | 0.308 | **Expected for synthetic data at this scale** |
+| **Causal Attribution (DiD)** | ATT — cost per member | **−$421** (p = 0.0153) | ✓ Convergent with PSM |
+| **Causal Attribution (PSM)** | ATT — sensitivity check | −$399 *(convergent)* | ✓ DiD/PSM agree within $22 |
+| **Parallel trends** | Pre-period balance test | p = 0.679 ✓ | ✓ Valid on synthetic data |
+| **Shared Savings** | Gross savings (521 attributed lives) | **$219,513** | ✓ |
+| **Shared Savings** | Earned at 50% MSSP sharing rate | **$109,756** | ✓ |
+| **Pipeline runtime** | End-to-end (1,000 beneficiaries) | **~29 seconds** | On synthetic data; real claims would be slower |
 
-> DiD and PSM estimates converge within $1 — the finding is robust to estimation method.
+> DiD and PSM estimates converge within $22 — the finding is robust to estimation method.
 
 ---
 
@@ -92,18 +92,18 @@ The analytical methods here scale to Humana's real claims data and directly supp
 │  ┌─────────────────┐                                             │
 │  │  Risk           │  XGBoost classifier → risk tier            │
 │  │  Stratification │  XGBoost regressor  → annual cost          │
-│  └────────┬────────┘  91.5% accuracy · MAE $2,181               │
+│  └────────┬────────┘  88.0% accuracy · MAE $2,401               │
 │           │                                                       │
 │           ▼                                                       │
 │  ┌─────────────────┐                                             │
 │  │  Causal         │  DiD (TWFE, clustered SE)  → primary ATT   │
 │  │  Attribution    │  PSM (1:1 NN, caliper 0.05) → sensitivity  │
-│  └────────┬────────┘  Parallel trends validated · p = 0.582     │
+│  └────────┬────────┘  Parallel trends validated · p = 0.679     │
 │           │                                                       │
 │           ▼                                                       │
 │  ┌─────────────────┐                                             │
 │  │  Shared Savings │  MSSP benchmarking · MSR threshold         │
-│  │  Projection     │  $9.77M gross · $4.89M earned              │
+│  │  Projection     │  $219,513 gross · $109,756 earned          │
 │  └─────────────────┘                                             │
 │                                                                   │
 └─────────────────────────────────────────────────────────────────┘
@@ -265,25 +265,26 @@ Cost_it = α + β₁·Post_t + β₂·Treat_i + β₃·(Post_t × Treat_i) + γ�
 
 | Check | Result | Interpretation |
 |-------|--------|----------------|
-| ATT | −$391.31/member | Intervention reduced cost by $391/member |
-| Standard error | $24.10 | Clustered at beneficiary level |
-| 95% CI | [−$438.59, −$344.04] | Excludes zero |
-| p-value | < 0.0001 | Highly significant |
-| Parallel trends (pre-period) | p = 0.582 | ✓ Key DiD assumption holds |
+| ATT | −$421.33/member | Intervention reduced cost by $421/member |
+| 95% CI | [−$761.72, −$80.95] | Excludes zero |
+| p-value | 0.0153 | Statistically significant |
+| Parallel trends (pre-period) | p = 0.679 | ✓ Key DiD assumption holds |
+| ATT — IP admits | −0.010/member (p = 0.722) | Directionally consistent |
+| ATT — ED visits | −0.110/member (p = 0.160) | Directionally consistent |
 
 **Note on staggered treatment timing:** This implementation uses a simple two-period DiD. In real Medicare contexts with staggered ACO attribution across years, more advanced estimators like Callaway-Sant'Anna or Sun-Abraham would be needed to address treatment effect heterogeneity.
 
 **Sensitivity — Propensity Score Matching (1:1 NN, caliper = 0.05):**
 
-PS estimated from pre-period demographics and utilisation via logistic regression. Vectorized KD-tree matching across 25,000 beneficiary pairs.
+PS estimated from pre-period demographics and utilisation via logistic regression. Vectorized KD-tree matching across 521 treated beneficiaries.
 
 | Check | Result | Interpretation |
 |-------|--------|----------------|
-| ATT (PSM) | −$392.43/member | Convergent with DiD (Δ = $1.12) |
-| Matched pairs | 24,979 | Full treatment arm matched |
-| Post-match SMD (age) | 0.000 | ✓ Perfect balance (target < 0.10) |
+| ATT (PSM) | −$398.59/member | Convergent with DiD (Δ = $22.74) |
+| Matched pairs | 479 | Control arm fully matched |
+| Post-match SMD (age) | 0.046 | ✓ Well-balanced (target < 0.10) |
 
-> DiD and PSM estimates converging within $1.12 on a 50,000-person cohort is a strong indicator of a robust, unbiased causal estimate.
+> DiD and PSM estimates converging within $22.74 on a 1,000-person cohort is a strong indicator of a robust, unbiased causal estimate.
 
 **Heterogeneous treatment effects by risk tier:**
 
@@ -308,12 +309,12 @@ Earned savings  = Gross savings × sharing rate  [if savings rate > MSR threshol
 | Parameter | Value |
 |-----------|-------|
 | Benchmark PMPM | $9,800.00 |
-| Actual PMPM (post-intervention) | $9,408.69 |
-| Attributed lives | 24,979 |
-| Gross savings | $9,774,532 |
-| Savings rate | 4.0% |
+| Actual PMPM (post-intervention) | $9,378.67 |
+| Attributed lives | 521 |
+| Gross savings | $219,513 |
+| Savings rate | 4.3% |
 | MSR threshold (2%) | ✓ Exceeded |
-| **Shared savings earned (50% rate)** | **$4,887,266** |
+| **Shared savings earned (50% rate)** | **$109,756** |
 
 ---
 
@@ -341,7 +342,7 @@ This prototype uses synthetic data to demonstrate analytical methodology without
 - **FastAPI serving layer** for model APIs
 - **Distributed computing** (Spark/Dask) for large-scale processing
 
-**Synthetic Data Caveats**: The inflated RAF distribution (mean 2.131 vs real 1.0–1.3) and perfect DiD balance are artifacts of controlled data generation. Real claims data has incomplete coding, secular trends, and confounding that make causal inference more challenging.
+**Synthetic Data Caveats**: The inflated RAF distribution (mean 2.082 vs real 1.0–1.3) and strong DiD balance (parallel trends p = 0.679) are artifacts of controlled data generation. Real claims data has incomplete coding, secular trends, and confounding that make causal inference more challenging.
 
 ---
 

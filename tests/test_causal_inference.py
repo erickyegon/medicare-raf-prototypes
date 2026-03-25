@@ -3,7 +3,7 @@
 import pytest
 import pandas as pd
 import numpy as np
-from src.medicare_raf.inference.causal_attribution import (
+from medicare_raf.inference.causal_attribution import (
     difference_in_differences,
     propensity_score_matching
 )

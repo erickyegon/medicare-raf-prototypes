@@ -24,8 +24,9 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 import seaborn as sns
+import shap
 
-sys.path.insert(0, os.path.dirname(__file__))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 
 from medicare_raf.data.data_generator import generate_beneficiary_cohort, generate_utilization_panel
 from medicare_raf.modeling.raf_calculator import calculate_raf_batch, summarise_cohort_raf
@@ -52,8 +53,9 @@ def main():
 
     # ── STAGE 1: DATA GENERATION ─────────────────────────────────
     stage_banner(1, "SYNTHETIC DATA GENERATION")
-    print(f"Generating 1,000-beneficiary Medicare cohort...")
-    cohort = generate_beneficiary_cohort(n=1_000)
+    n_bene = 1_000
+    print(f"Generating {n_bene:,}-beneficiary Medicare cohort...")
+    cohort = generate_beneficiary_cohort(n=n_bene)
     panel  = generate_utilization_panel(cohort, intervention_effect_pmpm=-420.0)
 
     cohort.to_parquet("data/processed/beneficiary_cohort.parquet", index=False)
@@ -65,7 +67,7 @@ def main():
 
     # ── STAGE 2: RAF SCORING ──────────────────────────────────────
     stage_banner(2, "HCC / RAF SCORING")
-    print("Calculating RAF scores for all 50,000 beneficiaries...")
+    print(f"Calculating RAF scores for all {len(cohort):,} beneficiaries...")
     cohort_raf = calculate_raf_batch(cohort)
 
     raf_summary = summarise_cohort_raf(cohort_raf)
@@ -88,7 +90,7 @@ def main():
     axes[0].axvline(1.0, color="red", linestyle="--", linewidth=1.5, label="Average (RAF=1.0)")
     axes[0].set_xlabel("RAF Score", fontsize=11)
     axes[0].set_ylabel("Beneficiary Count", fontsize=11)
-    axes[0].set_title("RAF Score Distribution (N=50,000)", fontsize=12, fontweight="bold")
+    axes[0].set_title(f"RAF Score Distribution (N={len(cohort):,})", fontsize=12, fontweight="bold")
     axes[0].legend()
 
     raf_by_tier = cohort_raf.groupby("risk_tier")["raf_score"].mean().reindex(

@@ -3,8 +3,8 @@
 import pytest
 import pandas as pd
 import numpy as np
-from src.medicare_raf.modeling.hcc_mapper import get_hcc_coefficient, get_hcc_label
-from src.medicare_raf.modeling.raf_calculator import calculate_raf_batch
+from medicare_raf.modeling.hcc_mapper import get_hcc_coefficient, get_hcc_label
+from medicare_raf.modeling.raf_calculator import calculate_raf_batch
 
 
 class TestHCCMapping:
@@ -52,7 +52,7 @@ class TestRAFCalculation:
     def test_demographic_coefficients(self):
         """Test demographic coefficient calculation."""
         # Age-sex coefficients should be positive
-        from src.medicare_raf.modeling.raf_calculator import get_demographic_coefficient
+        from medicare_raf.modeling.raf_calculator import get_demographic_coefficient
 
         coeff_75f = get_demographic_coefficient(75, 'F', dual=False)
         coeff_75m = get_demographic_coefficient(75, 'M', dual=False)
@@ -68,7 +68,7 @@ class TestRAFCalculation:
     ])
     def test_demographic_coefficient_ranges(self, age, sex, expected_range):
         """Test demographic coefficients are in expected ranges."""
-        from src.medicare_raf.modeling.raf_calculator import get_demographic_coefficient
+        from medicare_raf.modeling.raf_calculator import get_demographic_coefficient
 
         coeff = get_demographic_coefficient(age, sex, dual=False)
         assert expected_range[0] <= coeff <= expected_range[1]

@@ -250,6 +250,7 @@ def train_and_evaluate(cohort: pd.DataFrame, panel: pd.DataFrame) -> dict:
         mlflow.log_metric("cost_r2", metrics['cost_r2'])
 
         # Log feature importance
+        fi = model.feature_importance()
         fi_dict = dict(zip(fi['feature'], fi['importance']))
         mlflow.log_dict(fi_dict, "feature_importance.json")
 
@@ -259,7 +260,6 @@ def train_and_evaluate(cohort: pd.DataFrame, panel: pd.DataFrame) -> dict:
 
         print("  → MLflow run logged")
 
-    fi = model.feature_importance()
     print(f"\n  Top 5 features:\n{fi[['rank','feature','importance']].head(5).to_string(index=False)}")
 
     test_preds = model.predict(X_test)
@@ -269,16 +269,24 @@ def train_and_evaluate(cohort: pd.DataFrame, panel: pd.DataFrame) -> dict:
     test_preds["raf_score"]   = X_test["raf_score"].values
 
     # SHAP analysis for explainability
+    # Use XGBoost's native pred_contribs to avoid SHAP/XGBoost 3.x version incompatibility
+    # (SHAP's XGBTreeModelLoader can't parse multiclass base_score vectors in XGBoost 3.x)
     print("Computing SHAP values...")
-    explainer = shap.TreeExplainer(model.clf)
-    shap_values = explainer.shap_values(X_test[model.feature_cols])
-    
-    # For multiclass, shap_values is a list; take the 'high' risk class
-    if isinstance(shap_values, list):
-        high_risk_idx = list(model.label_enc.classes_).index("high")
-        shap_high = shap_values[high_risk_idx]
+    import xgboost as xgb
+    X_feat = X_test[model.feature_cols]
+    dmat = xgb.DMatrix(X_feat)
+    contribs = model.clf.get_booster().predict(dmat, pred_contribs=True)
+    # XGBoost 3.x multiclass: shape (n_samples, n_classes, n_features+1)
+    # Older versions: shape (n_samples, n_classes * (n_features+1))
+    high_risk_idx = list(model.label_enc.classes_).index("high")
+    n_feat = len(model.feature_cols)
+    if contribs.ndim == 3:
+        shap_high = contribs[:, high_risk_idx, :n_feat]
     else:
-        shap_high = shap_values
+        # Flat layout: [class0_f0..fn_bias, class1_f0..fn_bias, ...]
+        n_classes = len(model.label_enc.classes_)
+        stride = n_feat + 1
+        shap_high = contribs[:, high_risk_idx * stride : high_risk_idx * stride + n_feat]
     
     # Get feature importance from SHAP
     shap_importance = np.abs(shap_high).mean(axis=0)

@@ -2,7 +2,7 @@
 
 import pytest
 import pandas as pd
-from src.medicare_raf.data.data_generator import (
+from medicare_raf.data.data_generator import (
     validate_beneficiary_cohort,
     validate_utilization_panel,
     BeneficiaryRecord,
