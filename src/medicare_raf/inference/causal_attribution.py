@@ -1,7 +1,4 @@
-# Run this in your Codespace: python fix_psm.py
-# It will overwrite src/causal_attribution.py with the fast version
-
-content = '''"""
+"""
 causal_attribution.py — fast vectorized PSM via numpy
 """
 import numpy as np
@@ -10,6 +7,8 @@ from scipy import stats
 import statsmodels.formula.api as smf
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
+import matplotlib.pyplot as plt
+import seaborn as sns
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -102,7 +101,89 @@ def propensity_score_matching(panel, outcome="total_cost", caliper=0.05):
         "p_value": round(p_val, 4), "significant": bool(p_val < 0.05),
         "n_matched_pairs": n_pairs, "caliper": caliper,
         "smd_age_post_match": round(float(smd_age), 3),
+        "matched_treated_ids": t_matched,
+        "matched_control_ids": c_matched,
+        "treated_pre": treated,
+        "control_pre": control,
+        "treated_matched": treated[treated["bene_id"].isin(t_matched)],
+        "control_matched": control[control["bene_id"].isin(c_matched)],
     }
+
+
+def generate_love_plot(treated_pre: pd.DataFrame, control_pre: pd.DataFrame,
+                      treated_matched: pd.DataFrame, control_matched: pd.DataFrame,
+                      covariates: list, save_path: str = None):
+    """
+    Generate Love Plot showing covariate balance before and after matching.
+
+    Parameters
+    ----------
+    treated_pre : pd.DataFrame
+        Treated group before matching
+    control_pre : pd.DataFrame
+        Control group before matching
+    treated_matched : pd.DataFrame
+        Treated group after matching
+    control_matched : pd.DataFrame
+        Control group after matching
+    covariates : list
+        List of covariate column names
+    save_path : str, optional
+        Path to save the plot
+    """
+    def standardized_mean_difference(group1, group2, var):
+        """Calculate SMD for a variable."""
+        mean1, mean2 = group1[var].mean(), group2[var].mean()
+        std1, std2 = group1[var].std(), group2[var].std()
+        pooled_std = np.sqrt((std1**2 + std2**2) / 2)
+        return (mean1 - mean2) / pooled_std if pooled_std > 0 else 0
+
+    balance_data = []
+
+    for cov in covariates:
+        if cov in treated_pre.columns and cov in control_pre.columns:
+            # Before matching
+            smd_before = standardized_mean_difference(treated_pre, control_pre, cov)
+
+            # After matching
+            smd_after = standardized_mean_difference(treated_matched, control_matched, cov)
+
+            balance_data.append({
+                'covariate': cov,
+                'smd_before': abs(smd_before),
+                'smd_after': abs(smd_after)
+            })
+
+    balance_df = pd.DataFrame(balance_data)
+
+    # Create plot
+    fig, ax = plt.subplots(figsize=(10, 6))
+
+    y_pos = np.arange(len(balance_df))
+    ax.barh(y_pos - 0.2, balance_df['smd_before'], 0.4, label='Before Matching',
+            color='#2E86C1', alpha=0.7)
+    ax.barh(y_pos + 0.2, balance_df['smd_after'], 0.4, label='After Matching',
+            color='#1B4F72', alpha=0.7)
+
+    ax.axvline(0.1, color='red', linestyle='--', linewidth=1, label='SMD = 0.1 (good balance)')
+    ax.axvline(0.2, color='orange', linestyle='--', linewidth=1, label='SMD = 0.2 (acceptable)')
+
+    ax.set_yticks(y_pos)
+    ax.set_yticklabels(balance_df['covariate'])
+    ax.set_xlabel('Absolute Standardized Mean Difference')
+    ax.set_title('Covariate Balance: Love Plot (Before vs After Propensity Score Matching)')
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+
+    if save_path:
+        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+        plt.close()
+    else:
+        plt.show()
+
+    return balance_df
 
 
 def project_shared_savings(att_pmpm, n_attributed_lives, benchmark_pmpm=9800.0,
@@ -134,41 +215,46 @@ def run_full_attribution(panel, n_attributed_lives=None, benchmark_pmpm=9800.0):
         n_attributed_lives = panel[panel["intervention"]==1]["bene_id"].nunique()
     available_covs = [c for c in ["age","dual_eligible"] if c in panel.columns]
 
-    print("\\n1. Difference-in-Differences (Primary Estimator)")
+    print("\n1. Difference-in-Differences (Primary Estimator)")
     print("-" * 40)
     did_cost = difference_in_differences(panel, "total_cost", available_covs)
-    print(f"   ATT (total cost): ${did_cost[\'att\']:,.2f}/member (p={did_cost[\'p_value\']:.4f})")
-    print(f"   95% CI: [${did_cost[\'ci_95_low\']:,.2f}, ${did_cost[\'ci_95_high\']:,.2f}]")
-    print(f"   Significant: {did_cost[\'significant\']}")
-    print(f"   Parallel trends p-value: {did_cost[\'parallel_trends_p\']:.3f}")
+    print(f"   ATT (total cost): ${did_cost['att']:,.2f}/member (p={did_cost['p_value']:.4f})")
+    print(f"   95% CI: [${did_cost['ci_95_low']:,.2f}, ${did_cost['ci_95_high']:,.2f}]")
+    print(f"   Significant: {did_cost['significant']}")
+    print(f"   Parallel trends p-value: {did_cost['parallel_trends_p']:.3f}")
     did_ip = difference_in_differences(panel, "ip_admits")
-    print(f"\\n   ATT (IP admits): {did_ip[\'att\']:.3f}/member (p={did_ip[\'p_value\']:.4f})")
+    print(f"\n   ATT (IP admits): {did_ip['att']:.3f}/member (p={did_ip['p_value']:.4f})")
     did_ed = difference_in_differences(panel, "ed_visits")
-    print(f"   ATT (ED visits): {did_ed[\'att\']:.3f}/member (p={did_ed[\'p_value\']:.4f})")
+    print(f"   ATT (ED visits): {did_ed['att']:.3f}/member (p={did_ed['p_value']:.4f})")
 
-    print("\\n2. Propensity Score Matching (Sensitivity Analysis)")
+    print("\n2. Propensity Score Matching (Sensitivity Analysis)")
     print("-" * 40)
     psm_cost = propensity_score_matching(panel, "total_cost")
     if "att" in psm_cost:
-        print(f"   ATT (PSM): ${psm_cost[\'att\']:,.2f}/member (p={psm_cost[\'p_value\']:.4f})")
-        print(f"   Matched pairs: {psm_cost[\'n_matched_pairs\']:,}")
-        print(f"   Post-match SMD (age): {psm_cost[\'smd_age_post_match\']:.3f} (target <0.10)")
-    else:
-        print(f"   PSM: {psm_cost.get(\'error\', \'Failed\')}")
+        print(f"   ATT (PSM): ${psm_cost['att']:,.2f}/member (p={psm_cost['p_value']:.4f})")
+        print(f"   Matched pairs: {psm_cost['n_matched_pairs']:,}")
+        print(f"   Post-match SMD (age): {psm_cost['smd_age_post_match']:.3f} (target <0.10)")
 
-    print("\\n3. Shared Savings Projection (MSSP framework)")
+        # Generate Love Plot for covariate balance
+        covariates = ["age", "dual_eligible", "ip_admits", "ed_visits"]
+        if all(cov in psm_cost['treated_pre'].columns for cov in covariates):
+            balance_df = generate_love_plot(
+                psm_cost['treated_pre'], psm_cost['control_pre'],
+                psm_cost['treated_matched'], psm_cost['control_matched'],
+                covariates, save_path="reports/figures/05_love_plot.png"
+            )
+            print(f"   → Love Plot saved: reports/figures/05_love_plot.png")
+    else:
+        print(f"   PSM: {psm_cost.get('error', 'Failed')}")
+
+    print("\n3. Shared Savings Projection (MSSP framework)")
     print("-" * 40)
     savings = project_shared_savings(did_cost["att"], n_attributed_lives, benchmark_pmpm)
-    print(f"   Attributed lives:      {savings[\'n_attributed_lives\']:,}")
-    print(f"   Benchmark PMPM:        ${savings[\'benchmark_pmpm\']:,.2f}")
-    print(f"   Actual PMPM:           ${savings[\'actual_pmpm\']:,.2f}")
-    print(f"   Gross savings:         ${savings[\'gross_savings_total\']:,.0f}")
-    print(f"   Savings rate:          {savings[\'savings_rate_pct\']:.1f}%")
-    print(f"   Exceeds MSR (2%):      {savings[\'exceeds_msr\']}")
-    print(f"   Shared savings earned: ${savings[\'shared_savings_earned\']:,.0f}")
+    print(f"   Attributed lives:      {savings['n_attributed_lives']:,}")
+    print(f"   Benchmark PMPM:        ${savings['benchmark_pmpm']:,.2f}")
+    print(f"   Actual PMPM:           ${savings['actual_pmpm']:,.2f}")
+    print(f"   Gross savings:         ${savings['gross_savings_total']:,.0f}")
+    print(f"   Savings rate:          {savings['savings_rate_pct']:.1f}%")
+    print(f"   Exceeds MSR (2%):      {savings['exceeds_msr']}")
+    print(f"   Shared savings earned: ${savings['shared_savings_earned']:,.0f}")
     return {"did_cost": did_cost, "did_ip": did_ip, "did_ed": did_ed, "psm_cost": psm_cost, "savings": savings}
-'''
-
-with open("src/causal_attribution.py", "w") as f:
-    f.write(content)
-print("src/causal_attribution.py updated successfully.")

@@ -12,7 +12,7 @@ Reference: CMS Medicare Advantage Risk Adjustment Model (v28, CY2024)
 
 import pandas as pd
 import numpy as np
-from src.hcc_mapper import (
+from medicare_raf.modeling.hcc_mapper import (
     map_icd10_to_hcc,
     get_hcc_coefficient,
     get_hcc_label,

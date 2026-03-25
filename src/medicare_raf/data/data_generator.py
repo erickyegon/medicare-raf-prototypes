@@ -13,9 +13,75 @@ covering a realistic ACO-like population distribution.
 
 import numpy as np
 import pandas as pd
-from src.hcc_mapper import ICD10_TO_HCC
+from pydantic import BaseModel, validator, Field
+from typing import List, Optional
+from ..modeling.hcc_mapper import ICD10_TO_HCC
 
 SEED = 42
+
+
+class BeneficiaryRecord(BaseModel):
+    """Pydantic model for beneficiary data validation."""
+    bene_id: str = Field(..., min_length=1, max_length=20)
+    age: int = Field(..., ge=65, le=120)
+    sex: str = Field(..., pattern="^[MF]$")
+    race_ethnicity: str
+    dual_eligible: int = Field(..., ge=0, le=1)
+    risk_tier: str = Field(..., pattern="^(low|moderate|high)$")
+    icd10_codes: List[str]
+    intervention: int = Field(..., ge=0, le=1)
+    county_fips: str = Field(..., min_length=5, max_length=5)
+    plan_type: str
+
+    @validator('icd10_codes')
+    def validate_icd10_codes(cls, v):
+        """Validate ICD-10 codes are properly formatted."""
+        for code in v:
+            if not isinstance(code, str) or len(code) < 3:
+                raise ValueError(f"Invalid ICD-10 code: {code}")
+        return v
+
+
+class UtilizationRecord(BaseModel):
+    """Pydantic model for utilization data validation."""
+    bene_id: str
+    year: int = Field(..., ge=0, le=1)
+    period: str = Field(..., pattern="^(pre|post)$")
+    intervention: int = Field(..., ge=0, le=1)
+    risk_tier: str = Field(..., pattern="^(low|moderate|high)$")
+    age: int = Field(..., ge=65, le=120)
+    sex: str = Field(..., pattern="^[MF]$")
+    dual_eligible: int = Field(..., ge=0, le=1)
+    county_fips: str
+    total_cost: float = Field(..., ge=0)
+    ip_admits: int = Field(..., ge=0)
+    ed_visits: int = Field(..., ge=0)
+
+
+def validate_beneficiary_cohort(cohort: pd.DataFrame) -> pd.DataFrame:
+    """Validate beneficiary cohort data using Pydantic."""
+    validated_records = []
+    for _, row in cohort.iterrows():
+        try:
+            record = BeneficiaryRecord(**row.to_dict())
+            validated_records.append(record.dict())
+        except Exception as e:
+            raise ValueError(f"Validation failed for bene_id {row.get('bene_id', 'unknown')}: {e}")
+
+    return pd.DataFrame(validated_records)
+
+
+def validate_utilization_panel(panel: pd.DataFrame) -> pd.DataFrame:
+    """Validate utilization panel data using Pydantic."""
+    validated_records = []
+    for _, row in panel.iterrows():
+        try:
+            record = UtilizationRecord(**row.to_dict())
+            validated_records.append(record.dict())
+        except Exception as e:
+            raise ValueError(f"Validation failed for bene_id {row.get('bene_id', 'unknown')}: {e}")
+
+    return pd.DataFrame(validated_records)
 
 
 def _sample_icd10_codes(n_codes: int, risk_tier: str, rng) -> list:
@@ -145,7 +211,7 @@ def generate_beneficiary_cohort(
         p=[0.55, 0.30, 0.08, 0.07],
     )
 
-    return pd.DataFrame({
+    cohort = pd.DataFrame({
         "bene_id": bene_ids,
         "age": ages,
         "sex": sexes,
@@ -157,6 +223,10 @@ def generate_beneficiary_cohort(
         "county_fips": county_fips,
         "plan_type": plan_types,
     })
+
+    # Validate the generated data
+    validated_cohort = validate_beneficiary_cohort(cohort)
+    return validated_cohort
 
 
 def generate_utilization_panel(
@@ -243,7 +313,11 @@ def generate_utilization_panel(
                 "ed_visits": ed,
             })
 
-    return pd.DataFrame(records)
+    panel = pd.DataFrame(records)
+
+    # Validate the generated data
+    validated_panel = validate_utilization_panel(panel)
+    return validated_panel
 
 
 if __name__ == "__main__":

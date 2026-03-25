@@ -27,10 +27,10 @@ import seaborn as sns
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-from src.data_generator import generate_beneficiary_cohort, generate_utilization_panel
-from src.raf_calculator import calculate_raf_batch, summarise_cohort_raf
-from src.risk_stratification import engineer_features, train_and_evaluate, FEATURE_COLS
-from src.causal_attribution import run_full_attribution
+from medicare_raf.data.data_generator import generate_beneficiary_cohort, generate_utilization_panel
+from medicare_raf.modeling.raf_calculator import calculate_raf_batch, summarise_cohort_raf
+from medicare_raf.modeling.risk_stratification import engineer_features, train_and_evaluate, FEATURE_COLS
+from medicare_raf.inference.causal_attribution import run_full_attribution
 
 sns.set_style("whitegrid")
 plt.rcParams["font.family"] = "DejaVu Sans"
@@ -52,8 +52,8 @@ def main():
 
     # ── STAGE 1: DATA GENERATION ─────────────────────────────────
     stage_banner(1, "SYNTHETIC DATA GENERATION")
-    print(f"Generating 50,000-beneficiary Medicare cohort...")
-    cohort = generate_beneficiary_cohort(n=50_000)
+    print(f"Generating 1,000-beneficiary Medicare cohort...")
+    cohort = generate_beneficiary_cohort(n=1_000)
     panel  = generate_utilization_panel(cohort, intervention_effect_pmpm=-420.0)
 
     cohort.to_parquet("data/processed/beneficiary_cohort.parquet", index=False)
@@ -111,23 +111,52 @@ def main():
     results = train_and_evaluate(cohort_raf, panel)
     metrics = results["metrics"]
     fi      = results["feature_importance"]
+    shap_fi = results["shap_importance"]
+    shap_values = results["shap_values"]
+    X_test  = results["X_test"]
     preds   = results["test_predictions"]
 
     preds.to_parquet("data/processed/risk_predictions.parquet", index=False)
 
-    # Plot 2: Feature importance
+    # Plot 2: Feature importance (XGBoost gain)
     fig, ax = plt.subplots(figsize=(9, 5))
     fi_top = fi.head(12)
     ax.barh(fi_top["feature"][::-1], fi_top["importance"][::-1], color=ACCENT, alpha=0.85)
     ax.set_xlabel("Feature Importance (XGBoost)", fontsize=11)
-    ax.set_title("Top 12 Features — Risk Stratification Model", fontsize=12, fontweight="bold")
+    ax.set_title("Top 12 Features — XGBoost Gain Importance", fontsize=12, fontweight="bold")
     ax.axvline(fi_top["importance"].mean(), color="red", linestyle="--",
                linewidth=1, alpha=0.7, label="Mean importance")
     ax.legend(fontsize=9)
     plt.tight_layout()
-    plt.savefig("reports/figures/02_feature_importance.png", dpi=150, bbox_inches="tight")
+    plt.savefig("reports/figures/02a_xgboost_importance.png", dpi=150, bbox_inches="tight")
     plt.close()
-    print("  → Figure saved: reports/figures/02_feature_importance.png")
+    print("  → Figure saved: reports/figures/02a_xgboost_importance.png")
+
+    # Plot 2b: SHAP feature importance
+    fig, ax = plt.subplots(figsize=(9, 5))
+    shap_top = shap_fi.head(12)
+    ax.barh(shap_top["feature"][::-1], shap_top["shap_importance"][::-1], color="#2E86C1", alpha=0.85)
+    ax.set_xlabel("Feature Importance (SHAP)", fontsize=11)
+    ax.set_title("Top 12 Features — SHAP Importance", fontsize=12, fontweight="bold")
+    ax.axvline(shap_top["shap_importance"].mean(), color="red", linestyle="--",
+               linewidth=1, alpha=0.7, label="Mean importance")
+    ax.legend(fontsize=9)
+    plt.tight_layout()
+    plt.savefig("reports/figures/02b_shap_importance.png", dpi=150, bbox_inches="tight")
+    plt.close()
+    print("  → Figure saved: reports/figures/02b_shap_importance.png")
+
+    # Plot 2c: SHAP beeswarm plot
+    fig, ax = plt.subplots(figsize=(10, 6))
+    shap.plots.beeswarm(shap.Explanation(values=shap_values, 
+                                         data=X_test[results["model"].feature_cols].values,
+                                         feature_names=results["model"].feature_cols),
+                        max_display=12, show=False)
+    plt.title("SHAP Beeswarm Plot — High-Risk Prediction", fontsize=12, fontweight="bold")
+    plt.tight_layout()
+    plt.savefig("reports/figures/02c_shap_beeswarm.png", dpi=150, bbox_inches="tight")
+    plt.close()
+    print("  → Figure saved: reports/figures/02c_shap_beeswarm.png")
 
     # Plot 3: Predicted vs Actual cost
     fig, ax = plt.subplots(figsize=(7, 5))

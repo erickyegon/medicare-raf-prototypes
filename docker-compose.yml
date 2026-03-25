@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  medicare-raf:
+    build: .
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./data:/app/data
+      - ./reports:/app/reports
+    command: streamlit run app.py --server.port 8501 --server.address 0.0.0.0
+    environment:
+      - PYTHONPATH=/app/src
+
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.9.2
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./mlruns:/app/mlruns
+    command: mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri file:///app/mlruns

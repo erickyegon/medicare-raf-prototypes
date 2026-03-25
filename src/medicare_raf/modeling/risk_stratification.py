@@ -29,11 +29,13 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 import xgboost as xgb
 import shap
+import mlflow
+import mlflow.xgboost
 import warnings
 warnings.filterwarnings("ignore")
 
-from src.hcc_mapper import HCC_COEFFICIENTS_V28, get_hcc_label
-from src.raf_calculator import calculate_raf_batch, estimate_pmpm_cost
+from ..modeling.hcc_mapper import HCC_COEFFICIENTS_V28, get_hcc_label
+from ..modeling.raf_calculator import calculate_raf_batch, estimate_pmpm_cost
 
 
 def engineer_features(cohort: pd.DataFrame) -> pd.DataFrame:
@@ -232,6 +234,30 @@ def train_and_evaluate(cohort: pd.DataFrame, panel: pd.DataFrame) -> dict:
     print(f"\n  Tier accuracy : {metrics['tier_accuracy']:.1%}")
     print(f"  Cost MAE      : ${metrics['cost_mae']:,.0f}")
     print(f"  Cost R²       : {metrics['cost_r2']:.3f}")
+
+    # Log to MLflow
+    with mlflow.start_run(run_name="medicare_raf_risk_model"):
+        # Log parameters
+        mlflow.log_param("n_estimators", model.clf.n_estimators)
+        mlflow.log_param("max_depth", model.clf.max_depth)
+        mlflow.log_param("learning_rate", model.clf.learning_rate)
+        mlflow.log_param("train_size", len(X_train))
+        mlflow.log_param("test_size", len(X_test))
+
+        # Log metrics
+        mlflow.log_metric("tier_accuracy", metrics['tier_accuracy'])
+        mlflow.log_metric("cost_mae", metrics['cost_mae'])
+        mlflow.log_metric("cost_r2", metrics['cost_r2'])
+
+        # Log feature importance
+        fi_dict = dict(zip(fi['feature'], fi['importance']))
+        mlflow.log_dict(fi_dict, "feature_importance.json")
+
+        # Log models
+        mlflow.xgboost.log_model(model.clf, "classifier")
+        mlflow.xgboost.log_model(model.reg, "regressor")
+
+        print("  → MLflow run logged")
 
     fi = model.feature_importance()
     print(f"\n  Top 5 features:\n{fi[['rank','feature','importance']].head(5).to_string(index=False)}")
