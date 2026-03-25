@@ -9,3 +9,5 @@ __pycache__/
 *.csv
 reports/figures/*.png
 reports/results_summary.json
+mlruns/
+.claude/
