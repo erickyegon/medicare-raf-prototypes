@@ -178,12 +178,18 @@ def main():
         col3.metric(
             "Cost Savings per Member",
             f"${abs(r_att['att_cost_pmpm']):,.0f}",
-            help="Estimated reduction in annual cost per intervention-arm member (DiD estimate)."
+            help="DiD estimate from this demo run (N=1,000). Full 50,000-person pipeline: −$391/member (p < 0.0001). See Intervention Impact page."
         )
         col4.metric(
             "Shared Savings Earned",
             f"${r_ss['shared_savings_earned']:,.0f}",
             help="Projected MSSP earned savings at the 50% sharing rate."
+        )
+
+        st.info(
+            "**Demo cohort note:** This app runs on a 1,000-member subset for interactive performance. "
+            "The headline ATT shown here reflects that run. The full 50,000-person pipeline produces "
+            "**−$391/member (p < 0.0001)** — see the Intervention Impact page for both results side by side."
         )
 
         st.divider()
@@ -221,16 +227,16 @@ def main():
                 "with the cost finding."
             )
             st.markdown("**Shared Savings**")
-            # Use st.metric-style bullets to avoid $ LaTeX parsing
+            # Use \$ to escape dollar signs — bare $ in markdown triggers LaTeX
             benchmark  = r_ss['benchmark_pmpm']
             actual_pmp = r_ss['actual_pmpm']
             gross      = r_ss['gross_savings_total']
             earned     = r_ss['shared_savings_earned']
             srate      = r_ss['savings_rate_pct']
             st.markdown(
-                f"- Benchmark PMPM: **${benchmark:,.0f}** → Actual: **${actual_pmp:,.2f}**\n"
-                f"- Gross savings: **${gross:,.0f}** ({srate:.1f}% rate — exceeds 2% MSR)\n"
-                f"- At 50% MSSP sharing, the ACO earns **${earned:,.0f}**."
+                f"- Benchmark PMPM: **\\${benchmark:,.0f}** → Actual PMPM: **\\${actual_pmp:,.2f}**\n"
+                f"- Gross savings: **\\${gross:,.0f}** ({srate:.1f}% rate — exceeds 2% MSR)\n"
+                f"- At 50% MSSP sharing, the ACO earns **\\${earned:,.0f}**."
             )
 
         st.divider()
@@ -242,7 +248,8 @@ def main():
             ("% members RAF > 2.0",           f"{r_cohort['pct_raf_above_2']:.1f}%",        "High-complexity population"),
             ("Risk tier accuracy",            f"{r_model['tier_accuracy']:.1%}",            "XGBoost classifier"),
             ("Cost prediction MAE",           f"${r_model['cost_mae']:,.0f}",               "Annual cost error"),
-            ("ATT — cost per member (DiD)",   f"-${abs(r_att['att_cost_pmpm']):,.0f}",      f"p = {r_att['p_value']:.4f}"),
+            ("ATT — cost per member (DiD)",   f"-${abs(r_att['att_cost_pmpm']):,.0f}",      f"p = {r_att['p_value']:.4f} · demo run (N=1,000)"),
+            ("ATT — full pipeline (DiD)",     "-$391",                                      "p < 0.0001 · N=50,000 run — see Intervention Impact"),
             ("ATT — cost per member (PSM)",   "-$392",                                      "Convergent sensitivity check (50k run)"),
             ("Gross shared savings",          f"${r_ss['gross_savings_total']:,.0f}",       f"Savings rate: {r_ss['savings_rate_pct']:.1f}%"),
             ("Shared savings earned (50%)",   f"${r_ss['shared_savings_earned']:,.0f}",     "MSSP projection"),
@@ -500,8 +507,17 @@ def main():
 
         if Path("reports/figures/04_did_results.png").exists():
             st.divider()
+            st.info(
+                "**Demo cohort vs full pipeline:** The chart above shows the interactive demo cohort "
+                f"(N={r_cohort['n']:,}, ATT = −\\${abs(r_att['att_cost_pmpm']):,.0f}/member, "
+                f"p = {r_att['p_value']:.4f}). "
+                "The chart below shows the full 50,000-person pipeline run, which produces a more "
+                "precise ATT estimate with a tighter confidence interval "
+                "(ATT = −$391/member, p < 0.0001). "
+                "The methodology is identical — the difference reflects statistical precision at larger sample size."
+            )
             st.image("reports/figures/04_did_results.png",
-                     caption="Full DiD results panel from pipeline output")
+                     caption="Full pipeline DiD results (N=50,000 · ATT = −$391/member · p < 0.0001)")
 
     # ── SHARED SAVINGS ────────────────────────────────────────────────────
     elif page == "Shared Savings Projection":
@@ -603,8 +619,8 @@ def main():
             proj_rows.append((label, f"{pop:,}", f"${gross_proj:,.0f}", f"${earned_proj:,.0f}"))
 
         proj_df = pd.DataFrame(proj_rows,
-                               columns=["Scenario", "Attributed Lives", "Gross Savings", "Earned Savings"])
-        st.dataframe(proj_df, use_container_width=True, hide_index=True)
+                               columns=["Scenario", "Lives", "Gross Savings", "Earned (50%)"])
+        st.table(proj_df.set_index("Scenario"))
         st.caption(
             f"Projection uses ATT = ${att_pmpm}/member, {sharing_rate_pct}% sharing rate, "
             f"${benchmark_pmpm:,.0f} PMPM benchmark. Simplifications apply — see Production Considerations."
@@ -751,9 +767,13 @@ def main():
             pred_df    = model.predict(member_feat)
             pred_tier  = pred_df["predicted_tier"].iloc[0]
             pred_cost  = pred_df["predicted_cost"].iloc[0]
-            prob_high  = pred_df["prob_high"].iloc[0]
-            prob_mod   = pred_df.get("prob_moderate", pd.Series([0])).iloc[0]
-            prob_low   = pred_df.get("prob_low",      pd.Series([0])).iloc[0]
+
+            # Get full probability vector directly from classifier
+            proba_all  = model.clf.predict_proba(member_feat[model.feature_cols])
+            classes    = list(model.label_enc.classes_)
+            prob_high  = float(proba_all[0][classes.index("high")])      if "high"     in classes else 0.0
+            prob_mod   = float(proba_all[0][classes.index("moderate")])  if "moderate" in classes else 0.0
+            prob_low   = float(proba_all[0][classes.index("low")])       if "low"      in classes else 0.0
 
             tier_icon  = {"low": "🟢 LOW", "moderate": "🟡 MODERATE", "high": "🔴 HIGH"}.get(
                 pred_tier, pred_tier.upper()
@@ -788,7 +808,9 @@ def main():
             st.subheader("Step 5 — Why Was This Member Classified This Way?")
             st.markdown(
                 "The SHAP waterfall shows the contribution of each feature to this specific "
-                "member's prediction. **Blue = pushes toward high risk · Red = pushes toward lower risk.**"
+                "member's HIGH-risk classification probability. "
+                "**Red bars increase the high-risk prediction · Blue bars decrease it** "
+                "(standard SHAP convention: positive = red, negative = blue)."
             )
 
             import xgboost as xgb
@@ -813,7 +835,8 @@ def main():
             sorted_vals  = sv[sorted_idx]
 
             fig, ax = plt.subplots(figsize=(10, 5))
-            colours_w = [ACCENT if v >= 0 else "#C0392B" for v in sorted_vals]
+            # Standard SHAP convention: red=positive (increases prediction), blue=negative
+            colours_w = ["#C0392B" if v >= 0 else ACCENT for v in sorted_vals]
             bars = ax.barh(range(len(sorted_names)), sorted_vals,
                            color=colours_w, alpha=0.85, edgecolor="white")
             ax.set_yticks(range(len(sorted_names)))
