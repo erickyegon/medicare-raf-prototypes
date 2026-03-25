@@ -10,7 +10,7 @@
   <a href="https://github.com/erickyegon/medicare-raf-prototypes/actions/workflows/ci.yml">
     <img src="https://github.com/erickyegon/medicare-raf-prototypes/actions/workflows/ci.yml/badge.svg" alt="CI" />
   </a>
-  <a href="https://medicareyegon.streamlit.app/">
+  <a href="https://yegon-medicare-analytics.streamlit.app/">
     <img src="https://static.streamlit.io/badges/streamlit_badge_black_white.svg" alt="Open in Streamlit" />
   </a>
 </p>
@@ -178,7 +178,7 @@ A 19-slide PowerPoint deck providing stakeholder-level overview of the methodolo
 
 ## Live Demo
 
-**[medicareyegon.streamlit.app](https://medicareyegon.streamlit.app/)** — interactive dashboard with six pages:
+**[yegon-medicare-analytics.streamlit.app](https://yegon-medicare-analytics.streamlit.app/)** — interactive dashboard with six pages:
 - Executive Summary · RAF Distribution · Risk Stratification · Intervention Impact · Shared Savings Explorer · **Member Risk Calculator** (enter patient demographics and conditions, get real-time XGBoost prediction + SHAP waterfall)
 
 > **Note on cohort size**: The README reports results from the full 50,000-beneficiary analytical run (ATT −$391, p < 0.0001, $9.77M savings). The live app runs a **1,000-beneficiary demo subset** for interactive performance on hosted infrastructure — numbers will differ. The methodology is identical; the demo subset is for responsiveness, not analytical precision.

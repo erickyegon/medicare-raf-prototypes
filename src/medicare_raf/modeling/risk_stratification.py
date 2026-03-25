@@ -19,8 +19,14 @@ For production deployment this would consume CMS claims data
 
 import warnings
 
-import mlflow
-import mlflow.xgboost
+try:
+    import mlflow
+    import mlflow.xgboost
+
+    MLFLOW_AVAILABLE = True
+except ImportError:
+    MLFLOW_AVAILABLE = False
+
 import numpy as np
 import pandas as pd
 import xgboost as xgb
@@ -304,30 +310,25 @@ def train_and_evaluate(cohort: pd.DataFrame, panel: pd.DataFrame) -> dict:
     print(f"  Cost MAE      : ${metrics['cost_mae']:,.0f}")
     print(f"  Cost R²       : {metrics['cost_r2']:.3f}")
 
-    # Log to MLflow
-    with mlflow.start_run(run_name="medicare_raf_risk_model"):
-        # Log parameters
-        mlflow.log_param("n_estimators", model.clf.n_estimators)
-        mlflow.log_param("max_depth", model.clf.max_depth)
-        mlflow.log_param("learning_rate", model.clf.learning_rate)
-        mlflow.log_param("train_size", len(X_train))
-        mlflow.log_param("test_size", len(X_test))
-
-        # Log metrics
-        mlflow.log_metric("tier_accuracy", metrics["tier_accuracy"])
-        mlflow.log_metric("cost_mae", metrics["cost_mae"])
-        mlflow.log_metric("cost_r2", metrics["cost_r2"])
-
-        # Log feature importance
-        fi = model.feature_importance()
-        fi_dict = dict(zip(fi["feature"], fi["importance"], strict=False))
-        mlflow.log_dict(fi_dict, "feature_importance.json")
-
-        # Log models
-        mlflow.xgboost.log_model(model.clf, "classifier")
-        mlflow.xgboost.log_model(model.reg, "regressor")
-
-        print("  → MLflow run logged")
+    # Log to MLflow (optional — skipped if mlflow not installed)
+    fi = model.feature_importance()
+    if MLFLOW_AVAILABLE:
+        with mlflow.start_run(run_name="medicare_raf_risk_model"):
+            mlflow.log_param("n_estimators", model.clf.n_estimators)
+            mlflow.log_param("max_depth", model.clf.max_depth)
+            mlflow.log_param("learning_rate", model.clf.learning_rate)
+            mlflow.log_param("train_size", len(X_train))
+            mlflow.log_param("test_size", len(X_test))
+            mlflow.log_metric("tier_accuracy", metrics["tier_accuracy"])
+            mlflow.log_metric("cost_mae", metrics["cost_mae"])
+            mlflow.log_metric("cost_r2", metrics["cost_r2"])
+            fi_dict = dict(zip(fi["feature"], fi["importance"], strict=False))
+            mlflow.log_dict(fi_dict, "feature_importance.json")
+            mlflow.xgboost.log_model(model.clf, "classifier")
+            mlflow.xgboost.log_model(model.reg, "regressor")
+            print("  → MLflow run logged")
+    else:
+        print("  → MLflow not available — skipping experiment tracking")
 
     print(
         f"\n  Top 5 features:\n{fi[['rank', 'feature', 'importance']].head(5).to_string(index=False)}"
