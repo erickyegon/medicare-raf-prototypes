@@ -34,19 +34,19 @@ This pipeline implements all three, end-to-end, in a single reproducible codebas
 
 ---
 
-## Why This Matters for Humana / Managed Care
+## Why This Matters for Value-Based Care Organizations
 
-This prototype demonstrates the quantitative foundation for Humana's value-based care initiatives:
+This prototype demonstrates the quantitative foundation for Medicare Advantage plans, ACOs, and value-based care enablement platforms:
 
-- **ACO REACH Shared Savings**: The DiD estimate of -$391/member translates directly to Stars bonus calculations and MSSP earnings. Humana's 2023 ACO REACH performance earned $1.8B in shared savings — this pipeline shows how to rigorously measure whether clinical programs drive that economics.
+- **ACO REACH Shared Savings**: The DiD estimate of −$391/member translates directly to MSSP earnings and ACO REACH performance. Large MA plans have earned billions in shared savings — this pipeline shows how to rigorously measure whether clinical programmes drive that economics, not secular trends or selection bias.
 
-- **Risk Adjustment Accuracy**: The HCC/RAF model ensures fair comparisons across member populations. Humana processes 4.7M MA members annually; accurate RAF scoring prevents adverse selection and supports equitable premium setting.
+- **Risk Adjustment Accuracy**: The HCC/RAF model ensures fair comparisons across member populations. Accurate RAF scoring is critical for premium setting, bid strategy, and preventing adverse selection in competitive MA markets.
 
-- **Clinical Risk Stratification**: The XGBoost model identifies high-risk members for proactive care management. Humana's Medicare Advantage population has ~25% with RAF > 1.5 — targeting them with coordinated care can reduce hospitalizations by 15-20%.
+- **Clinical Risk Stratification**: The XGBoost model identifies high-risk members for proactive care management. MA populations with RAF > 1.5 represent a minority of beneficiaries but a disproportionate share of total cost — targeting them with coordinated care can reduce hospitalisations by 15–20%.
 
-- **Causal Attribution**: The convergent DiD/PSM results provide confidence that measured savings reflect true intervention effects, not secular trends. This is critical for Humana's investment decisions in care management programs.
+- **Causal Attribution**: The convergent DiD/PSM results provide confidence that measured savings reflect true intervention effects. This is critical for investment decisions in care management programs and for credible reporting to CMS under MSSP/ACO REACH contracts.
 
-The analytical methods here scale to Humana's real claims data and directly support the transition from fee-for-service to value-based payment models.
+The analytical methods here scale to real Medicare claims data and directly support the transition from fee-for-service to value-based payment models.
 
 ---
 
