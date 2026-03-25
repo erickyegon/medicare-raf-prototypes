@@ -71,7 +71,7 @@ def load_all_data():
     )
     from medicare_raf.modeling.raf_calculator import (
         calculate_raf_batch,
-        get_raf_summary_stats,
+        summarise_cohort_raf,
     )
     from medicare_raf.modeling.risk_stratification import train_and_evaluate
     from medicare_raf.inference.causal_attribution import run_full_attribution
@@ -89,7 +89,7 @@ def load_all_data():
     did_cost = attr_out["did_cost"]
     savings  = attr_out["savings"]
 
-    raf_stats = get_raf_summary_stats(raf_data)
+    raf_stats = summarise_cohort_raf(raf_data)
 
     results = {
         "cohort": {
