@@ -20,6 +20,10 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from pathlib import Path
 
+# ── Ensure required directories exist (Streamlit Cloud starts from a bare clone) ──
+for _dir in ["reports/figures", "data/processed"]:
+    Path(_dir).mkdir(parents=True, exist_ok=True)
+
 # ── Page config ────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="Medicare RAF Analytics",
