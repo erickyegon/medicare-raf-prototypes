@@ -39,38 +39,91 @@ def fmt_usd2(value):
 
 
 # ── Data loaders ───────────────────────────────────────────────────────────
-@st.cache_data
-def load_data():
+@st.cache_resource(
+    show_spinner="Running analytics pipeline — first load takes about 20 seconds..."
+)
+def load_all_data():
+    """
+    Load all pipeline outputs from disk, or generate them inline if not present.
+    Using @st.cache_resource so the trained model is never serialised/deserialised.
+    Returns a dict: cohort, panel, raf_data, preds, results, model.
+    """
+    import joblib
+
+    # ── Try disk first (local dev / after running run_pipeline.py) ────────
     try:
         cohort   = pd.read_parquet("data/processed/beneficiary_cohort.parquet")
         panel    = pd.read_parquet("data/processed/utilization_panel.parquet")
         raf_data = pd.read_parquet("data/processed/cohort_with_raf.parquet")
-        return cohort, panel, raf_data
-    except FileNotFoundError:
-        return None, None, None
-
-@st.cache_data
-def load_results():
-    try:
+        preds    = pd.read_parquet("data/processed/risk_predictions.parquet")
+        model    = joblib.load("data/processed/risk_model.joblib")
         with open("reports/results_summary.json") as f:
-            return json.load(f)
-    except FileNotFoundError:
-        return None
+            results = json.load(f)
+        return dict(cohort=cohort, panel=panel, raf_data=raf_data,
+                    preds=preds, results=results, model=model)
+    except Exception:
+        pass  # Fall through to inline generation
 
-@st.cache_data
-def load_predictions():
-    try:
-        return pd.read_parquet("data/processed/risk_predictions.parquet")
-    except FileNotFoundError:
-        return None
+    # ── Inline generation for Streamlit Cloud ─────────────────────────────
+    from medicare_raf.data.data_generator import (
+        generate_beneficiary_cohort,
+        generate_utilization_panel,
+    )
+    from medicare_raf.modeling.raf_calculator import (
+        calculate_raf_batch,
+        get_raf_summary_stats,
+    )
+    from medicare_raf.modeling.risk_stratification import train_and_evaluate
+    from medicare_raf.inference.causal_attribution import run_full_attribution
 
-@st.cache_resource
-def load_model():
-    try:
-        import joblib
-        return joblib.load("data/processed/risk_model.joblib")
-    except FileNotFoundError:
-        return None
+    N = 1_000
+    cohort   = generate_beneficiary_cohort(n=N, seed=42)
+    panel    = generate_utilization_panel(cohort, intervention_effect_pmpm=-420.0, seed=42)
+    raf_data = calculate_raf_batch(cohort)
+
+    risk_out = train_and_evaluate(cohort, panel)
+    model    = risk_out["model"]
+    preds    = risk_out["test_predictions"]
+
+    attr_out = run_full_attribution(panel)
+    did_cost = attr_out["did_cost"]
+    savings  = attr_out["savings"]
+
+    raf_stats = get_raf_summary_stats(raf_data)
+
+    results = {
+        "cohort": {
+            "n":               N,
+            "mean_raf":        raf_stats["mean_raf"],
+            "median_raf":      raf_stats["median_raf"],
+            "p90_raf":         raf_stats["p90_raf"],
+            "pct_raf_above_2": raf_stats["pct_raf_above_2"],
+        },
+        "model": {
+            "tier_accuracy": risk_out["metrics"]["tier_accuracy"],
+            "cost_mae":      risk_out["metrics"]["cost_mae"],
+            "cost_r2":       risk_out["metrics"]["cost_r2"],
+        },
+        "attribution": {
+            "att_cost_pmpm":     did_cost["att"],
+            "att_ip_admits":     attr_out["did_ip"]["att"],
+            "att_ed_visits":     attr_out["did_ed"]["att"],
+            "p_value":           did_cost["p_value"],
+            "parallel_trends_p": did_cost["parallel_trends_p"],
+        },
+        "shared_savings": {
+            "benchmark_pmpm":        savings["benchmark_pmpm"],
+            "actual_pmpm":           savings["actual_pmpm"],
+            "gross_savings_total":   savings["gross_savings_total"],
+            "shared_savings_earned": savings["shared_savings_earned"],
+            "savings_rate_pct":      savings["savings_rate_pct"],
+            "n_attributed_lives":    savings["n_attributed_lives"],
+            "mssp_sharing_rate":     0.50,
+        },
+    }
+
+    return dict(cohort=cohort, panel=panel, raf_data=raf_data,
+                preds=preds, results=results, model=model)
 
 # ── Condition catalogue for the interactive calculator ─────────────────────
 # Each entry: (display label, HCC number, representative ICD-10 code, HCC RAF coeff)
@@ -123,55 +176,18 @@ INTERACTION_TERMS = {
     ("has_ckd", "has_diabetes"):("CKD × Diabetes",     0.156),
 }
 
-# ── Auto-setup for Streamlit Cloud ────────────────────────────────────────
-def ensure_pipeline_output():
-    """
-    If processed data/results don't exist (e.g. fresh Streamlit Cloud container),
-    run the pipeline automatically with N=1,000 demo cohort.
-    Files are written to disk and cached for the session lifetime.
-    """
-    if os.path.exists("reports/results_summary.json"):
-        return  # Already have output — nothing to do
-
-    import subprocess
-    with st.spinner(
-        "First-time setup: generating demo data and running the analytics pipeline "
-        "(takes ~15–20 seconds on first load)..."
-    ):
-        proc = subprocess.run(
-            [sys.executable, "run_pipeline.py"],
-            capture_output=True,
-            text=True,
-            timeout=300,
-            env={**os.environ, "PYTHONIOENCODING": "utf-8", "N_BENE": "1000"},
-        )
-
-    if proc.returncode != 0:
-        st.error("Pipeline setup failed. Please refresh the page to try again.")
-        with st.expander("Error details"):
-            st.code((proc.stderr or proc.stdout or "No output")[-3000:])
-        st.stop()
-
-    st.rerun()  # Reload so all @st.cache_data loaders pick up the new files
-
-
 # ── Main ───────────────────────────────────────────────────────────────────
 def main():
     st.title("Medicare Clinical Performance Analytics")
     st.markdown("**Risk Adjustment · Risk Stratification · Shared Savings Attribution**")
 
-    # Auto-generate pipeline output on first load (Streamlit Cloud)
-    ensure_pipeline_output()
+    # Single loader — reads from disk if available, otherwise generates inline
+    data = load_all_data()
 
-    cohort, panel, raf_data = load_data()
-    results = load_results()
-
-    if cohort is None or results is None:
-        st.error(
-            "Pipeline output not found. This should have been generated automatically — "
-            "please refresh the page. If the error persists, run `python run_pipeline.py` locally."
-        )
-        return
+    cohort   = data["cohort"]
+    panel    = data["panel"]
+    raf_data = data["raf_data"]
+    results  = data["results"]
 
     r_cohort = results["cohort"]
     r_model  = results["model"]
@@ -368,10 +384,7 @@ def main():
             "for the right interventions before costly events occur."
         )
 
-        preds = load_predictions()
-        if preds is None:
-            st.warning("Model predictions not found. Please run the full pipeline first.")
-            return
+        preds = data["preds"]
 
         accuracy = (preds["predicted_tier"] == preds["actual_tier"]).mean()
         mae      = abs(preds["predicted_cost"] - preds["actual_cost"]).mean()
@@ -678,13 +691,7 @@ def main():
             "features drove the prediction** via a SHAP waterfall."
         )
 
-        model = load_model()
-        if model is None:
-            st.warning(
-                "Trained model not found. Run `python run_pipeline.py` first, "
-                "then refresh this page."
-            )
-            return
+        model = data["model"]
 
         # ── Demographics input ──────────────────────────────────────────
         st.subheader("Step 1 — Demographics")
