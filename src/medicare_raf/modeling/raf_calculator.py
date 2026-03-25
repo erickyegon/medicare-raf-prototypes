@@ -11,46 +11,57 @@ Reference: CMS Medicare Advantage Risk Adjustment Model (v28, CY2024)
 """
 
 import pandas as pd
-import numpy as np
+
 from medicare_raf.modeling.hcc_mapper import (
-    map_icd10_to_hcc,
     get_hcc_coefficient,
     get_hcc_label,
-    HCC_COEFFICIENTS_V28,
+    map_icd10_to_hcc,
 )
 
 # ── Demographic base coefficients (community non-dual aged) ──────────────────
 # Age/sex coefficients from CMS v28 model
 DEMOGRAPHIC_COEFFICIENTS = {
     # (age_band, sex) → coefficient
-    ("65-69", "M"): 0.379, ("65-69", "F"): 0.316,
-    ("70-74", "M"): 0.435, ("70-74", "F"): 0.371,
-    ("75-79", "M"): 0.516, ("75-79", "F"): 0.453,
-    ("80-84", "M"): 0.601, ("80-84", "F"): 0.528,
-    ("85-89", "M"): 0.643, ("85-89", "F"): 0.565,
-    ("90+",   "M"): 0.712, ("90+",   "F"): 0.634,
+    ("65-69", "M"): 0.379,
+    ("65-69", "F"): 0.316,
+    ("70-74", "M"): 0.435,
+    ("70-74", "F"): 0.371,
+    ("75-79", "M"): 0.516,
+    ("75-79", "F"): 0.453,
+    ("80-84", "M"): 0.601,
+    ("80-84", "F"): 0.528,
+    ("85-89", "M"): 0.643,
+    ("85-89", "F"): 0.565,
+    ("90+", "M"): 0.712,
+    ("90+", "F"): 0.634,
 }
 
 # ── Disease interaction coefficients (selected key interactions) ─────────────
 INTERACTION_COEFFICIENTS = {
-    frozenset({85, 96}): 0.175,   # CHF + AFib
-    frozenset({85, 17}): 0.121,   # CHF + Diabetes
-    frozenset({85, 18}): 0.121,   # CHF + Diabetes w/ chronic complications
+    frozenset({85, 96}): 0.175,  # CHF + AFib
+    frozenset({85, 17}): 0.121,  # CHF + Diabetes
+    frozenset({85, 18}): 0.121,  # CHF + Diabetes w/ chronic complications
     frozenset({111, 17}): 0.099,  # COPD + Diabetes
-    frozenset({8,  85}): 0.224,   # Metastatic Cancer + CHF
+    frozenset({8, 85}): 0.224,  # Metastatic Cancer + CHF
     frozenset({134, 85}): 0.312,  # ESRD + CHF
     frozenset({134, 17}): 0.208,  # ESRD + Diabetes
-    frozenset({17,  19}): 0.0,    # Use higher HCC only (17 > 19)
+    frozenset({17, 19}): 0.0,  # Use higher HCC only (17 > 19)
 }
 
 
 def get_age_band(age: int) -> str:
-    if age < 70:   return "65-69"
-    elif age < 75: return "70-74"
-    elif age < 80: return "75-79"
-    elif age < 85: return "80-84"
-    elif age < 90: return "85-89"
-    else:          return "90+"
+    if age < 70:
+        return "65-69"
+    elif age < 75:
+        return "70-74"
+    elif age < 80:
+        return "75-79"
+    elif age < 85:
+        return "80-84"
+    elif age < 90:
+        return "85-89"
+    else:
+        return "90+"
 
 
 def calculate_raf(
@@ -187,7 +198,5 @@ def summarise_cohort_raf(df: pd.DataFrame) -> dict:
         "p75_raf": round(df["raf_score"].quantile(0.75), 3),
         "p90_raf": round(df["raf_score"].quantile(0.90), 3),
         "pct_raf_above_2": round((df["raf_score"] > 2.0).mean() * 100, 1),
-        "estimated_total_cost": round(
-            df["raf_score"].sum() * 9_800, 0
-        ),
+        "estimated_total_cost": round(df["raf_score"].sum() * 9_800, 0),
     }

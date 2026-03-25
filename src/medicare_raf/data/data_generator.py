@@ -13,8 +13,8 @@ covering a realistic ACO-like population distribution.
 
 import numpy as np
 import pandas as pd
-from pydantic import BaseModel, validator, Field
-from typing import List, Optional
+from pydantic import BaseModel, Field, validator
+
 from ..modeling.hcc_mapper import ICD10_TO_HCC
 
 SEED = 42
@@ -22,18 +22,19 @@ SEED = 42
 
 class BeneficiaryRecord(BaseModel):
     """Pydantic model for beneficiary data validation."""
+
     bene_id: str = Field(..., min_length=1, max_length=20)
     age: int = Field(..., ge=65, le=120)
     sex: str = Field(..., pattern="^[MF]$")
     race_ethnicity: str
     dual_eligible: int = Field(..., ge=0, le=1)
     risk_tier: str = Field(..., pattern="^(low|moderate|high)$")
-    icd10_codes: List[str]
+    icd10_codes: list[str]
     intervention: int = Field(..., ge=0, le=1)
     county_fips: str = Field(..., min_length=5, max_length=5)
     plan_type: str
 
-    @validator('icd10_codes')
+    @validator("icd10_codes")
     def validate_icd10_codes(cls, v):
         """Validate ICD-10 codes are properly formatted."""
         for code in v:
@@ -44,6 +45,7 @@ class BeneficiaryRecord(BaseModel):
 
 class UtilizationRecord(BaseModel):
     """Pydantic model for utilization data validation."""
+
     bene_id: str
     year: int = Field(..., ge=0, le=1)
     period: str = Field(..., pattern="^(pre|post)$")
@@ -66,7 +68,9 @@ def validate_beneficiary_cohort(cohort: pd.DataFrame) -> pd.DataFrame:
             record = BeneficiaryRecord(**row.to_dict())
             validated_records.append(record.dict())
         except Exception as e:
-            raise ValueError(f"Validation failed for bene_id {row.get('bene_id', 'unknown')}: {e}")
+            raise ValueError(
+                f"Validation failed for bene_id {row.get('bene_id', 'unknown')}: {e}"
+            ) from e
 
     return pd.DataFrame(validated_records)
 
@@ -79,7 +83,9 @@ def validate_utilization_panel(panel: pd.DataFrame) -> pd.DataFrame:
             record = UtilizationRecord(**row.to_dict())
             validated_records.append(record.dict())
         except Exception as e:
-            raise ValueError(f"Validation failed for bene_id {row.get('bene_id', 'unknown')}: {e}")
+            raise ValueError(
+                f"Validation failed for bene_id {row.get('bene_id', 'unknown')}: {e}"
+            ) from e
 
     return pd.DataFrame(validated_records)
 
@@ -90,22 +96,43 @@ def _sample_icd10_codes(n_codes: int, risk_tier: str, rng) -> list:
 
     # High-prevalence codes by tier
     high_risk_codes = [
-        "I500", "I501", "I5020", "I5022",           # CHF
-        "E1140", "E1141",                            # T2DM CKD
-        "N184", "N185", "N186",                      # CKD Stage 4-6
-        "I480", "I481", "I4811",                     # AFib
-        "C3410", "C7800", "C800",                    # Cancer
-        "G20", "G3500",                              # Parkinson's / MS
-        "J4420", "J441",                             # COPD
+        "I500",
+        "I501",
+        "I5020",
+        "I5022",  # CHF
+        "E1140",
+        "E1141",  # T2DM CKD
+        "N184",
+        "N185",
+        "N186",  # CKD Stage 4-6
+        "I480",
+        "I481",
+        "I4811",  # AFib
+        "C3410",
+        "C7800",
+        "C800",  # Cancer
+        "G20",
+        "G3500",  # Parkinson's / MS
+        "J4420",
+        "J441",  # COPD
     ]
     moderate_risk_codes = [
-        "E119", "E1165",                             # T2DM w/o complication
-        "I702", "I7020", "I739",                     # Vascular
-        "I2101", "I219",                             # AMI
-        "F320", "F321", "F3289",                     # Depression
-        "N181", "N182", "N183",                      # CKD Stage 1-3
-        "E6601",                                     # Morbid obesity
-        "M0500", "M0510",                            # RA
+        "E119",
+        "E1165",  # T2DM w/o complication
+        "I702",
+        "I7020",
+        "I739",  # Vascular
+        "I2101",
+        "I219",  # AMI
+        "F320",
+        "F321",
+        "F3289",  # Depression
+        "N181",
+        "N182",
+        "N183",  # CKD Stage 1-3
+        "E6601",  # Morbid obesity
+        "M0500",
+        "M0510",  # RA
     ]
 
     if risk_tier == "high":
@@ -147,8 +174,14 @@ def generate_beneficiary_cohort(
     # Age distribution mimicking Medicare Advantage (65+)
     age_probs = [0.28, 0.24, 0.20, 0.14, 0.08, 0.06]  # 65-69..90+
     age_bands = ["65-69", "70-74", "75-79", "80-84", "85-89", "90+"]
-    age_band_map = {"65-69": (65, 70), "70-74": (70, 75), "75-79": (75, 80),
-                    "80-84": (80, 85), "85-89": (85, 90), "90+": (90, 97)}
+    age_band_map = {
+        "65-69": (65, 70),
+        "70-74": (70, 75),
+        "75-79": (75, 80),
+        "80-84": (80, 85),
+        "85-89": (85, 90),
+        "90+": (90, 97),
+    }
     age_band_choices = rng.choice(age_bands, size=n, p=age_probs)
     ages = np.array([rng.integers(*age_band_map[ab]) for ab in age_band_choices])
 
@@ -159,7 +192,8 @@ def generate_beneficiary_cohort(
     race_probs = [0.76, 0.10, 0.07, 0.04, 0.03]
     races = rng.choice(
         ["Non-Hispanic White", "Black", "Hispanic", "Asian", "Other"],
-        size=n, p=race_probs
+        size=n,
+        p=race_probs,
     )
 
     # Dual eligibility (Medicare + Medicaid) — ~20% in MA
@@ -169,18 +203,22 @@ def generate_beneficiary_cohort(
     # High risk more common among older, dual-eligible
     risk_base = np.where(ages >= 80, 0.30, np.where(ages >= 75, 0.20, 0.12))
     risk_base += dual * 0.10
-    risk_tier_probs = np.column_stack([
-        risk_base,
-        np.full(n, 0.35),
-        1 - risk_base - 0.35,
-    ])
+    risk_tier_probs = np.column_stack(
+        [
+            risk_base,
+            np.full(n, 0.35),
+            1 - risk_base - 0.35,
+        ]
+    )
     risk_tier_probs = np.clip(risk_tier_probs, 0.01, None)
     risk_tier_probs /= risk_tier_probs.sum(axis=1, keepdims=True)
 
-    risk_tiers = np.array([
-        rng.choice(["high", "moderate", "low"], p=risk_tier_probs[i])
-        for i in range(n)
-    ])
+    risk_tiers = np.array(
+        [
+            rng.choice(["high", "moderate", "low"], p=risk_tier_probs[i])
+            for i in range(n)
+        ]
+    )
 
     # ICD-10 codes (number varies by risk tier)
     n_codes_map = {"high": (6, 14), "moderate": (2, 7), "low": (0, 3)}
@@ -194,13 +232,24 @@ def generate_beneficiary_cohort(
     ]
 
     # Intervention assignment (roughly 50/50 for DiD/PSM analysis)
-    intervention = rng.choice([0, 1], size=n, p=[1 - intervention_prevalence,
-                                                    intervention_prevalence])
+    intervention = rng.choice(
+        [0, 1], size=n, p=[1 - intervention_prevalence, intervention_prevalence]
+    )
 
     # County FIPS (simulate a multi-county ACO)
     county_fips = rng.choice(
-        ["21097", "21151", "21067", "21179", "21017",
-         "21209", "21227", "21239", "21047", "21113"],
+        [
+            "21097",
+            "21151",
+            "21067",
+            "21179",
+            "21017",
+            "21209",
+            "21227",
+            "21239",
+            "21047",
+            "21113",
+        ],
         size=n,
     )
 
@@ -211,18 +260,20 @@ def generate_beneficiary_cohort(
         p=[0.55, 0.30, 0.08, 0.07],
     )
 
-    cohort = pd.DataFrame({
-        "bene_id": bene_ids,
-        "age": ages,
-        "sex": sexes,
-        "race_ethnicity": races,
-        "dual_eligible": dual,
-        "risk_tier": risk_tiers,
-        "icd10_codes": icd10_codes,
-        "intervention": intervention,
-        "county_fips": county_fips,
-        "plan_type": plan_types,
-    })
+    cohort = pd.DataFrame(
+        {
+            "bene_id": bene_ids,
+            "age": ages,
+            "sex": sexes,
+            "race_ethnicity": races,
+            "dual_eligible": dual,
+            "risk_tier": risk_tiers,
+            "icd10_codes": icd10_codes,
+            "intervention": intervention,
+            "county_fips": county_fips,
+            "plan_type": plan_types,
+        }
+    )
 
     # Validate the generated data
     validated_cohort = validate_beneficiary_cohort(cohort)
@@ -253,9 +304,9 @@ def generate_utilization_panel(
     rng = np.random.default_rng(seed + 1)
 
     cost_base = {
-        "high":     12_800,
-        "moderate":  9_200,
-        "low":       6_400,
+        "high": 12_800,
+        "moderate": 9_200,
+        "low": 6_400,
     }
 
     records = []
@@ -271,7 +322,7 @@ def generate_utilization_panel(
 
         # Post-intervention year (year=1)
         noise_post = rng.normal(0, base * 0.30)
-        secular_trend = rng.normal(250, 80)   # secular cost increase ~$250/yr
+        secular_trend = rng.normal(250, 80)  # secular cost increase ~$250/yr
         treatment_effect = intervention_effect_pmpm if row["intervention"] == 1 else 0.0
 
         # High-risk patients get a larger absolute effect
@@ -282,14 +333,14 @@ def generate_utilization_panel(
 
         # IP admissions
         ip_base = {"high": 0.35, "moderate": 0.18, "low": 0.06}
-        ip_admits_pre  = rng.poisson(ip_base[row["risk_tier"]])
+        ip_admits_pre = rng.poisson(ip_base[row["risk_tier"]])
         ip_admits_post = rng.poisson(
             ip_base[row["risk_tier"]] * (0.85 if row["intervention"] == 1 else 1.0)
         )
 
         # ED visits
         ed_base = {"high": 1.8, "moderate": 0.9, "low": 0.3}
-        ed_visits_pre  = rng.poisson(ed_base[row["risk_tier"]])
+        ed_visits_pre = rng.poisson(ed_base[row["risk_tier"]])
         ed_visits_post = rng.poisson(
             ed_base[row["risk_tier"]] * (0.88 if row["intervention"] == 1 else 1.0)
         )
@@ -298,20 +349,22 @@ def generate_utilization_panel(
             (0, cost_pre, ip_admits_pre, ed_visits_pre),
             (1, cost_post, ip_admits_post, ed_visits_post),
         ]:
-            records.append({
-                "bene_id": row["bene_id"],
-                "year": year,
-                "period": "pre" if year == 0 else "post",
-                "intervention": row["intervention"],
-                "risk_tier": row["risk_tier"],
-                "age": row["age"],
-                "sex": row["sex"],
-                "dual_eligible": row["dual_eligible"],
-                "county_fips": row["county_fips"],
-                "total_cost": round(cost, 2),
-                "ip_admits": ip,
-                "ed_visits": ed,
-            })
+            records.append(
+                {
+                    "bene_id": row["bene_id"],
+                    "year": year,
+                    "period": "pre" if year == 0 else "post",
+                    "intervention": row["intervention"],
+                    "risk_tier": row["risk_tier"],
+                    "age": row["age"],
+                    "sex": row["sex"],
+                    "dual_eligible": row["dual_eligible"],
+                    "county_fips": row["county_fips"],
+                    "total_cost": round(cost, 2),
+                    "ip_admits": ip,
+                    "ed_visits": ed,
+                }
+            )
 
     panel = pd.DataFrame(records)
 

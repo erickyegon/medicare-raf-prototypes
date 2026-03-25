@@ -10,6 +10,9 @@
   <a href="https://github.com/erickyegon/medicare-raf-prototypes/actions/workflows/ci.yml">
     <img src="https://github.com/erickyegon/medicare-raf-prototypes/actions/workflows/ci.yml/badge.svg" alt="CI" />
   </a>
+  <a href="https://medicareyegon.streamlit.app/">
+    <img src="https://static.streamlit.io/badges/streamlit_badge_black_white.svg" alt="Open in Streamlit" />
+  </a>
 </p>
 
 A rigorous analytical prototype for **Medicare Advantage and ACO clinical performance measurement** — covering HCC/RAF risk adjustment, clinical risk stratification, causal attribution of intervention impact, and shared savings projection under MSSP/ACO REACH benchmarking logic.
@@ -173,6 +176,15 @@ A 19-slide PowerPoint deck providing stakeholder-level overview of the methodolo
 
 ---
 
+## Live Demo
+
+**[medicareyegon.streamlit.app](https://medicareyegon.streamlit.app/)** — interactive dashboard with six pages:
+- Executive Summary · RAF Distribution · Risk Stratification · Intervention Impact · Shared Savings Explorer · **Member Risk Calculator** (enter patient demographics and conditions, get real-time XGBoost prediction + SHAP waterfall)
+
+> **Note on cohort size**: The README reports results from the full 50,000-beneficiary analytical run (ATT −$391, p < 0.0001, $9.77M savings). The live app runs a **1,000-beneficiary demo subset** for interactive performance on hosted infrastructure — numbers will differ. The methodology is identical; the demo subset is for responsiveness, not analytical precision.
+
+---
+
 ## Quickstart
 
 ```bash
@@ -182,13 +194,13 @@ pip install -e .
 python run_pipeline.py
 ```
 
-Full pipeline completes in **~30 seconds**. Figures are written to `reports/figures/`.
+Full pipeline completes in **~30 seconds**. Figures are written to `reports/figures/` and `docs/figures/`.
 
 To explore interactively:
 ```bash
 jupyter lab notebooks/
 ```
-To launch the dashboard:
+To launch the dashboard locally:
 ```bash
 streamlit run app.py
 ```
@@ -254,13 +266,13 @@ SHAP (SHapley Additive exPlanations) provides individual prediction explanations
 
 ![SHAP Beeswarm Plot](docs/figures/02c_shap_beeswarm.png)
 
-*SHAP beeswarm plot showing feature impact on high-risk predictions. Each dot represents one beneficiary; color indicates feature value (red=high, blue=low).*
+*SHAP beeswarm showing feature impact on **HIGH-risk classification probability**. X-axis = SHAP value (positive = pushes toward high-risk prediction). Each dot is one beneficiary; dot colour indicates feature value (red=high, blue=low). Features ordered by mean absolute SHAP importance.*
 
 **Per-member explainability — SHAP Waterfall (example high-risk member):**
 
 ![SHAP Waterfall](docs/figures/02d_shap_waterfall.png)
 
-*SHAP waterfall for the highest-risk member in the test set. Blue bars push the prediction toward HIGH risk; red bars push it toward lower risk. This is the clinical decision support view — a care manager can see exactly why member X was flagged.*
+*SHAP waterfall for the highest-risk member in the test set. Bars show each feature's contribution to the HIGH-risk class probability relative to the population base rate (E[f(x)]). Positive bars increase the HIGH-risk prediction; negative bars decrease it. This is the clinical decision support view — a care manager can see exactly why member X was flagged.*
 
 ### 3 · Causal Attribution (DiD + PSM)
 

@@ -17,23 +17,22 @@ For production deployment this would consume CMS claims data
 (Part A, B, D) processed through the HCC pipeline.
 """
 
+import warnings
+
 import numpy as np
 import pandas as pd
-from sklearn.model_selection import train_test_split, StratifiedKFold
-from sklearn.preprocessing import LabelEncoder
-from sklearn.metrics import (
-    classification_report, roc_auc_score,
-    mean_absolute_error, r2_score,
-)
-from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import StandardScaler
-import xgboost as xgb
 import shap
-import warnings
-warnings.filterwarnings("ignore")
+import xgboost as xgb
+from sklearn.metrics import (
+    mean_absolute_error,
+    r2_score,
+)
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelEncoder
 
-from src.hcc_mapper import HCC_COEFFICIENTS_V28, get_hcc_label
 from src.raf_calculator import calculate_raf_batch, estimate_pmpm_cost
+
+warnings.filterwarnings("ignore")
 
 
 def engineer_features(cohort: pd.DataFrame) -> pd.DataFrame:
@@ -52,8 +51,13 @@ def engineer_features(cohort: pd.DataFrame) -> pd.DataFrame:
     # Restore hccs to list if serialised as string
     if len(df) > 0 and isinstance(df.get("hccs", pd.Series([None])).iloc[0], str):
         import ast
+
         df["hccs"] = df["hccs"].apply(
-            lambda x: list(ast.literal_eval(x)) if isinstance(x, str) else (list(x) if x else [])
+            lambda x: (
+                list(ast.literal_eval(x))
+                if isinstance(x, str)
+                else (list(x) if x else [])
+            )
         )
 
     # Calculate RAF only if not already present
@@ -66,33 +70,58 @@ def engineer_features(cohort: pd.DataFrame) -> pd.DataFrame:
             df_raf["hccs"] = [[] for _ in range(len(df_raf))]
 
     # HCC flag features for top HCCs
-    key_hccs = [8, 9, 11, 12, 17, 18, 19, 22, 40, 58, 79, 85, 86, 96,
-                107, 108, 111, 134, 135, 136, 137, 138]
+    key_hccs = [
+        8,
+        9,
+        11,
+        12,
+        17,
+        18,
+        19,
+        22,
+        40,
+        58,
+        79,
+        85,
+        86,
+        96,
+        107,
+        108,
+        111,
+        134,
+        135,
+        136,
+        137,
+        138,
+    ]
 
     for hcc in key_hccs:
         col = f"hcc_{hcc}"
-        df_raf[col] = df_raf["hccs"].apply(lambda h: int(hcc in h))
+        df_raf[col] = df_raf["hccs"].apply(lambda h, _hcc=hcc: int(_hcc in h))
 
     # Aggregate HCC features
-    df_raf["hcc_count"]    = df_raf["hccs"].apply(len)
-    df_raf["has_cancer"]   = df_raf["hccs"].apply(lambda h: int(bool(set(h) & {8, 9, 10, 11, 12})))
-    df_raf["has_chf"]      = df_raf["hcc_85"]
+    df_raf["hcc_count"] = df_raf["hccs"].apply(len)
+    df_raf["has_cancer"] = df_raf["hccs"].apply(
+        lambda h: int(bool(set(h) & {8, 9, 10, 11, 12}))
+    )
+    df_raf["has_chf"] = df_raf["hcc_85"]
     df_raf["has_diabetes"] = df_raf[["hcc_17", "hcc_18", "hcc_19"]].max(axis=1)
-    df_raf["has_ckd"]      = df_raf[["hcc_134", "hcc_135", "hcc_136",
-                                      "hcc_137", "hcc_138"]].max(axis=1)
-    df_raf["has_copd"]     = df_raf["hcc_111"]
-    df_raf["has_afib"]     = df_raf["hcc_96"]
+    df_raf["has_ckd"] = df_raf[
+        ["hcc_134", "hcc_135", "hcc_136", "hcc_137", "hcc_138"]
+    ].max(axis=1)
+    df_raf["has_copd"] = df_raf["hcc_111"]
+    df_raf["has_afib"] = df_raf["hcc_96"]
 
     # Demographic features
-    df_raf["age_scaled"]   = (df_raf["age"] - 72) / 10
-    df_raf["is_female"]    = (df_raf["sex"] == "F").astype(int)
-    df_raf["age_sq"]       = df_raf["age_scaled"] ** 2
+    df_raf["age_scaled"] = (df_raf["age"] - 72) / 10
+    df_raf["is_female"] = (df_raf["sex"] == "F").astype(int)
+    df_raf["age_sq"] = df_raf["age_scaled"] ** 2
 
     # Interaction features
-    df_raf["chf_afib"]     = df_raf["has_chf"] * df_raf["has_afib"]
+    df_raf["chf_afib"] = df_raf["has_chf"] * df_raf["has_afib"]
     df_raf["chf_diabetes"] = df_raf["has_chf"] * df_raf["has_diabetes"]
     df_raf["ckd_diabetes"] = df_raf["has_ckd"] * df_raf["has_diabetes"]
-    df_raf["cancer_age"]   = df_raf["has_cancer"] * df_raf["age_scaled"]
+    df_raf["cancer_age"] = df_raf["has_cancer"] * df_raf["age_scaled"]
 
     # Estimated cost from RAF
     df_raf["predicted_cost_raf"] = df_raf["raf_score"].apply(estimate_pmpm_cost)
@@ -100,16 +129,52 @@ def engineer_features(cohort: pd.DataFrame) -> pd.DataFrame:
     return df_raf
 
 
-FEATURE_COLS = (
-    ["age_scaled", "age_sq", "is_female", "dual_eligible",
-     "raf_score", "demographic_raf", "hcc_raf", "hcc_count",
-     "has_cancer", "has_chf", "has_diabetes", "has_ckd",
-     "has_copd", "has_afib",
-     "chf_afib", "chf_diabetes", "ckd_diabetes", "cancer_age"] +
-    [f"hcc_{h}" for h in [8, 9, 11, 12, 17, 18, 19, 22, 40,
-                           58, 79, 85, 86, 96, 107, 108, 111,
-                           134, 135, 136, 137, 138]]
-)
+FEATURE_COLS = [
+    "age_scaled",
+    "age_sq",
+    "is_female",
+    "dual_eligible",
+    "raf_score",
+    "demographic_raf",
+    "hcc_raf",
+    "hcc_count",
+    "has_cancer",
+    "has_chf",
+    "has_diabetes",
+    "has_ckd",
+    "has_copd",
+    "has_afib",
+    "chf_afib",
+    "chf_diabetes",
+    "ckd_diabetes",
+    "cancer_age",
+] + [
+    f"hcc_{h}"
+    for h in [
+        8,
+        9,
+        11,
+        12,
+        17,
+        18,
+        19,
+        22,
+        40,
+        58,
+        79,
+        85,
+        86,
+        96,
+        107,
+        108,
+        111,
+        134,
+        135,
+        136,
+        137,
+        138,
+    ]
+]
 
 
 class RiskStratificationModel:
@@ -148,8 +213,9 @@ class RiskStratificationModel:
         self.feature_cols = FEATURE_COLS
         self.is_fitted = False
 
-    def fit(self, X: pd.DataFrame, y_tier: pd.Series,
-            y_cost: pd.Series) -> "RiskStratificationModel":
+    def fit(
+        self, X: pd.DataFrame, y_tier: pd.Series, y_cost: pd.Series
+    ) -> "RiskStratificationModel":
         y_enc = self.label_enc.fit_transform(y_tier)
         self.clf.fit(X[self.feature_cols], y_enc)
         self.reg.fit(X[self.feature_cols], y_cost)
@@ -158,35 +224,43 @@ class RiskStratificationModel:
 
     def predict(self, X: pd.DataFrame) -> pd.DataFrame:
         assert self.is_fitted, "Model must be fitted first."
-        tier_enc    = self.clf.predict(X[self.feature_cols])
-        tier_proba  = self.clf.predict_proba(X[self.feature_cols])
-        cost_pred   = self.reg.predict(X[self.feature_cols])
+        tier_enc = self.clf.predict(X[self.feature_cols])
+        tier_proba = self.clf.predict_proba(X[self.feature_cols])
+        cost_pred = self.reg.predict(X[self.feature_cols])
 
-        return pd.DataFrame({
-            "predicted_tier":      self.label_enc.inverse_transform(tier_enc),
-            "prob_high":           tier_proba[:, list(self.label_enc.classes_).index("high")]
-                                   if "high" in self.label_enc.classes_ else 0,
-            "predicted_cost":      np.round(cost_pred, 2),
-            "risk_score":          np.round(tier_proba[:, -1], 4),  # highest risk class prob
-        })
+        return pd.DataFrame(
+            {
+                "predicted_tier": self.label_enc.inverse_transform(tier_enc),
+                "prob_high": tier_proba[:, list(self.label_enc.classes_).index("high")]
+                if "high" in self.label_enc.classes_
+                else 0,
+                "predicted_cost": np.round(cost_pred, 2),
+                "risk_score": np.round(tier_proba[:, -1], 4),  # highest risk class prob
+            }
+        )
 
-    def evaluate(self, X: pd.DataFrame, y_tier: pd.Series,
-                 y_cost: pd.Series) -> dict:
+    def evaluate(self, X: pd.DataFrame, y_tier: pd.Series, y_cost: pd.Series) -> dict:
         preds = self.predict(X)
-        y_enc = self.label_enc.transform(y_tier)
-        tier_enc = self.label_enc.transform(preds["predicted_tier"])
 
         return {
-            "tier_accuracy": round((preds["predicted_tier"].values == y_tier.values).mean(), 4),
-            "cost_mae":      round(mean_absolute_error(y_cost.values, preds["predicted_cost"].values), 2),
-            "cost_r2":       round(r2_score(y_cost.values, preds["predicted_cost"].values), 4),
+            "tier_accuracy": round(
+                (preds["predicted_tier"].values == y_tier.values).mean(), 4
+            ),
+            "cost_mae": round(
+                mean_absolute_error(y_cost.values, preds["predicted_cost"].values), 2
+            ),
+            "cost_r2": round(
+                r2_score(y_cost.values, preds["predicted_cost"].values), 4
+            ),
         }
 
     def feature_importance(self) -> pd.DataFrame:
-        fi = pd.DataFrame({
-            "feature":    self.feature_cols,
-            "importance": self.clf.feature_importances_,
-        }).sort_values("importance", ascending=False)
+        fi = pd.DataFrame(
+            {
+                "feature": self.feature_cols,
+                "importance": self.clf.feature_importances_,
+            }
+        ).sort_values("importance", ascending=False)
         fi["rank"] = range(1, len(fi) + 1)
         return fi.head(20)
 
@@ -208,10 +282,7 @@ def train_and_evaluate(cohort: pd.DataFrame, panel: pd.DataFrame) -> dict:
     X = engineer_features(cohort)
 
     # Cost labels from pre-period utilisation
-    pre_costs = (
-        panel[panel["year"] == 0]
-        .set_index("bene_id")["total_cost"]
-    )
+    pre_costs = panel[panel["year"] == 0].set_index("bene_id")["total_cost"]
     X["actual_cost"] = X["bene_id"].map(pre_costs)
     X = X.dropna(subset=["actual_cost"])
 
@@ -234,40 +305,41 @@ def train_and_evaluate(cohort: pd.DataFrame, panel: pd.DataFrame) -> dict:
     print(f"  Cost R²       : {metrics['cost_r2']:.3f}")
 
     fi = model.feature_importance()
-    print(f"\n  Top 5 features:\n{fi[['rank','feature','importance']].head(5).to_string(index=False)}")
+    print(
+        f"\n  Top 5 features:\n{fi[['rank', 'feature', 'importance']].head(5).to_string(index=False)}"
+    )
 
     test_preds = model.predict(X_test)
-    test_preds["bene_id"]     = X_test["bene_id"].values
+    test_preds["bene_id"] = X_test["bene_id"].values
     test_preds["actual_tier"] = yt_test.values
     test_preds["actual_cost"] = yc_test.values
-    test_preds["raf_score"]   = X_test["raf_score"].values
+    test_preds["raf_score"] = X_test["raf_score"].values
 
     # SHAP analysis for explainability
     print("Computing SHAP values...")
     explainer = shap.TreeExplainer(model.clf)
     shap_values = explainer.shap_values(X_test[model.feature_cols])
-    
+
     # For multiclass, shap_values is a list; take the 'high' risk class
     if isinstance(shap_values, list):
         high_risk_idx = list(model.label_enc.classes_).index("high")
         shap_high = shap_values[high_risk_idx]
     else:
         shap_high = shap_values
-    
+
     # Get feature importance from SHAP
     shap_importance = np.abs(shap_high).mean(axis=0)
-    shap_fi = pd.DataFrame({
-        "feature": model.feature_cols,
-        "shap_importance": shap_importance
-    }).sort_values("shap_importance", ascending=False)
+    shap_fi = pd.DataFrame(
+        {"feature": model.feature_cols, "shap_importance": shap_importance}
+    ).sort_values("shap_importance", ascending=False)
     shap_fi["rank"] = range(1, len(shap_fi) + 1)
 
     return {
-        "model":              model,
-        "metrics":            metrics,
+        "model": model,
+        "metrics": metrics,
         "feature_importance": fi,
-        "shap_importance":    shap_fi,
-        "shap_values":        shap_high,
-        "X_test":             X_test,
-        "test_predictions":   test_preds,
+        "shap_importance": shap_fi,
+        "shap_values": shap_high,
+        "X_test": X_test,
+        "test_predictions": test_preds,
     }
