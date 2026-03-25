@@ -122,6 +122,10 @@ def main():
 
     preds.to_parquet("data/processed/risk_predictions.parquet", index=False)
 
+    import joblib
+    joblib.dump(results["model"], "data/processed/risk_model.joblib")
+    print("  → Model saved: data/processed/risk_model.joblib")
+
     # Plot 2: Feature importance (XGBoost gain)
     fig, ax = plt.subplots(figsize=(9, 5))
     fi_top = fi.head(12)

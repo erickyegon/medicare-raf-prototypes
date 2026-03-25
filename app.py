@@ -2,6 +2,10 @@
 app.py — Streamlit dashboard for Medicare RAF analytics
 """
 
+import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
+
 import json
 import streamlit as st
 import pandas as pd
@@ -60,6 +64,65 @@ def load_predictions():
     except FileNotFoundError:
         return None
 
+@st.cache_resource
+def load_model():
+    try:
+        import joblib
+        return joblib.load("data/processed/risk_model.joblib")
+    except FileNotFoundError:
+        return None
+
+# ── Condition catalogue for the interactive calculator ─────────────────────
+# Each entry: (display label, HCC number, representative ICD-10 code, HCC RAF coeff)
+CONDITIONS = {
+    "Cardiovascular": [
+        ("Congestive Heart Failure",           85,  "I500",  0.323),
+        ("Atrial Fibrillation / Arrhythmia",   96,  "I480",  0.421),
+        ("Acute Myocardial Infarction",        86,  "I2109", 0.218),
+        ("Vascular Disease with Complications",107, "I7001", 0.299),
+        ("Vascular Disease",                   108, "I739",  0.178),
+    ],
+    "Diabetes": [
+        ("T2DM — Complications (CKD/Angiopathy)", 18, "E1140", 0.302),
+        ("T2DM — Without Complications",          19, "E119",  0.118),
+        ("T1DM — Acute Complication",             17, "E1010", 0.302),
+    ],
+    "Renal Disease": [
+        ("CKD Stage 3 — Moderate",  138, "N183", 0.071),
+        ("CKD Stage 4 — Severe",    137, "N184", 0.138),
+        ("CKD Stage 5",             136, "N185", 0.143),
+        ("Renal Failure",           135, "N19",  0.289),
+        ("Dialysis Status",         134, "Z992", 0.289),
+    ],
+    "Pulmonary": [
+        ("COPD",          111, "J449", 0.245),
+        ("Cystic Fibrosis",110,"J84189",0.335),
+    ],
+    "Cancer": [
+        ("Metastatic Cancer",              8,  "C7951", 2.488),
+        ("Lung / Severe Cancer",           9,  "C349",  0.899),
+        ("Colorectal / Bladder Cancer",    11, "C189",  0.439),
+        ("Breast / Prostate Cancer",       12, "C509",  0.150),
+    ],
+    "Neurological / Mental Health": [
+        ("Seizure Disorders",          79, "G409", 0.448),
+        ("Parkinson's Disease",        78, "G20",  0.406),
+        ("Multiple Sclerosis",         77, "G35",  0.597),
+        ("Rheumatoid Arthritis",       40, "M0500",0.455),
+        ("Major Depression / Bipolar", 58, "F329", 0.421),
+        ("Schizophrenia",              57, "F209", 0.625),
+    ],
+    "Other": [
+        ("Morbid Obesity",             22, "E6601", 0.178),
+    ],
+}
+
+INTERACTION_TERMS = {
+    ("has_chf", "has_afib"):    ("CHF × AFib",         0.175),
+    ("has_chf", "has_diabetes"):("CHF × Diabetes",     0.156),
+    ("has_ckd", "has_diabetes"):("CKD × Diabetes",     0.156),
+}
+
 # ── Main ───────────────────────────────────────────────────────────────────
 def main():
     st.title("Medicare Clinical Performance Analytics")
@@ -88,6 +151,7 @@ def main():
         "Risk Stratification Model",
         "Intervention Impact",
         "Shared Savings Projection",
+        "Member Risk Calculator",
     ])
 
     # ── EXECUTIVE SUMMARY ─────────────────────────────────────────────────
@@ -552,6 +616,229 @@ def main():
             "rating multipliers, no benchmark rebasing after Year 3, no regional adjustment factors, "
             "no asymmetric sharing for losses (one-sided risk only)."
         )
+
+    # ── MEMBER RISK CALCULATOR ────────────────────────────────────────────
+    elif page == "Member Risk Calculator":
+        st.header("Interactive Member Risk Calculator")
+        st.markdown(
+            "Enter a member's demographics and select their diagnosed conditions. "
+            "The calculator will **compute their RAF score in real time**, predict their "
+            "risk tier and annual cost using the trained XGBoost model, and show **which "
+            "features drove the prediction** via a SHAP waterfall."
+        )
+
+        model = load_model()
+        if model is None:
+            st.warning(
+                "Trained model not found. Run `python run_pipeline.py` first, "
+                "then refresh this page."
+            )
+            return
+
+        # ── Demographics input ──────────────────────────────────────────
+        st.subheader("Step 1 — Demographics")
+        col_d1, col_d2, col_d3 = st.columns(3)
+        with col_d1:
+            age = st.slider("Age", 65, 95, 75,
+                            help="Member age in years.")
+        with col_d2:
+            sex = st.radio("Sex", ["F", "M"], index=0,
+                           horizontal=True,
+                           help="Biological sex — affects demographic RAF coefficient.")
+        with col_d3:
+            dual = st.checkbox("Dual Eligible (Medicare + Medicaid)",
+                               help="Dual eligibility affects cost but not the v28 RAF community non-dual coefficients used here.")
+
+        # ── Condition selection ─────────────────────────────────────────
+        st.subheader("Step 2 — Diagnosed Conditions")
+        st.markdown("Select all conditions the member has been diagnosed with:")
+
+        selected_hccs    = set()
+        selected_icd10s  = []
+        selected_labels  = []
+
+        cols = st.columns(2)
+        for i, (category, conditions) in enumerate(CONDITIONS.items()):
+            with cols[i % 2]:
+                with st.expander(category, expanded=(i < 2)):
+                    for label, hcc, icd10, coeff in conditions:
+                        if st.checkbox(f"{label}  (+{coeff:.3f} RAF)", key=f"cond_{hcc}"):
+                            selected_hccs.add(hcc)
+                            selected_icd10s.append(icd10)
+                            selected_labels.append((label, hcc, coeff))
+
+        # ── RAF Computation ─────────────────────────────────────────────
+        st.subheader("Step 3 — RAF Score Breakdown")
+
+        # Demographic coefficient (simplified age-sex table)
+        demo_table = {
+            ("F", 65): 0.321, ("F", 70): 0.382, ("F", 75): 0.453,
+            ("F", 80): 0.521, ("F", 85): 0.591, ("F", 90): 0.658, ("F", 95): 0.712,
+            ("M", 65): 0.346, ("M", 70): 0.401, ("M", 75): 0.478,
+            ("M", 80): 0.549, ("M", 85): 0.619, ("M", 90): 0.685, ("M", 95): 0.740,
+        }
+        age_bracket = min(range(65, 100, 5), key=lambda a: abs(a - age))
+        demo_coeff  = demo_table.get((sex, age_bracket), 0.45)
+
+        hcc_total = sum(coeff for _, _, coeff in selected_labels)
+
+        # Interaction terms
+        has_chf      = 85  in selected_hccs
+        has_afib     = 96  in selected_hccs
+        has_diabetes = bool(selected_hccs & {17, 18, 19})
+        has_ckd      = bool(selected_hccs & {134, 135, 136, 137, 138})
+
+        interaction_rows = []
+        interaction_total = 0.0
+        checks = {
+            "has_chf":      has_chf,
+            "has_afib":     has_afib,
+            "has_diabetes": has_diabetes,
+            "has_ckd":      has_ckd,
+        }
+        for (f1, f2), (label_i, coeff_i) in INTERACTION_TERMS.items():
+            if checks.get(f1) and checks.get(f2):
+                interaction_rows.append((label_i, coeff_i))
+                interaction_total += coeff_i
+
+        raf_score = demo_coeff + hcc_total + interaction_total
+        estimated_cost = raf_score * 9800
+
+        # RAF breakdown table
+        rows = [("Demographic coefficient", f"Age {age}, sex {sex}", f"+{demo_coeff:.3f}")]
+        for label, hcc, coeff in selected_labels:
+            rows.append((f"HCC {hcc} — {label}", "", f"+{coeff:.3f}"))
+        for label_i, coeff_i in interaction_rows:
+            rows.append((f"Interaction: {label_i}", "(conditions co-occur)", f"+{coeff_i:.3f}"))
+        rows.append(("**Total RAF Score**", "", f"**{raf_score:.3f}**"))
+
+        breakdown_df = pd.DataFrame(rows, columns=["Component", "Note", "Coefficient"])
+
+        col_b1, col_b2 = st.columns([3, 1])
+        with col_b1:
+            st.dataframe(breakdown_df, use_container_width=True, hide_index=True)
+        with col_b2:
+            tier_colour = {"low": "🟢", "moderate": "🟡", "high": "🔴"}.get
+            raf_label = "High" if raf_score >= 2.0 else ("Moderate" if raf_score >= 1.2 else "Low")
+            st.metric("RAF Score",         f"{raf_score:.3f}",
+                      help="1.0 = Medicare average. Each 0.1 above 1.0 adds ~$980/year.")
+            st.metric("Est. Annual Cost",  f"${estimated_cost:,.0f}",
+                      help="RAF × $9,800 benchmark PMPM × 12 months.")
+            st.metric("Rule-Based Tier",   raf_label,
+                      help="Approximate tier from RAF alone. XGBoost below uses richer features.")
+
+        # ── XGBoost Prediction ─────────────────────────────────────────
+        st.subheader("Step 4 — XGBoost Model Prediction")
+
+        try:
+            from medicare_raf.modeling.risk_stratification import engineer_features, FEATURE_COLS
+            from medicare_raf.modeling.raf_calculator import calculate_raf_batch
+
+            member_df = pd.DataFrame([{
+                "bene_id":       "CALC_MEMBER",
+                "age":           age,
+                "sex":           sex,
+                "dual_eligible": int(dual),
+                "icd10_codes":   selected_icd10s if selected_icd10s else ["Z00000"],
+                "risk_tier":     raf_label.lower(),
+            }])
+
+            # Full RAF + feature engineering
+            member_raf = calculate_raf_batch(member_df)
+            member_feat = engineer_features(member_raf)
+
+            # Model prediction
+            pred_df    = model.predict(member_feat)
+            pred_tier  = pred_df["predicted_tier"].iloc[0]
+            pred_cost  = pred_df["predicted_cost"].iloc[0]
+            prob_high  = pred_df["prob_high"].iloc[0]
+            prob_mod   = pred_df.get("prob_moderate", pd.Series([0])).iloc[0]
+            prob_low   = pred_df.get("prob_low",      pd.Series([0])).iloc[0]
+
+            tier_icon  = {"low": "🟢 LOW", "moderate": "🟡 MODERATE", "high": "🔴 HIGH"}.get(
+                pred_tier, pred_tier.upper()
+            )
+
+            col_p1, col_p2, col_p3 = st.columns(3)
+            col_p1.metric("Predicted Risk Tier",  tier_icon,
+                          help="XGBoost classification using all 40 engineered features.")
+            col_p2.metric("Predicted Annual Cost", f"${pred_cost:,.0f}",
+                          help="XGBoost regression estimate of annual cost.")
+            col_p3.metric("Prob. High Risk",       f"{prob_high:.1%}",
+                          help="Model confidence that this member falls in the high-risk tier.")
+
+            # Probability bar chart
+            fig, ax = plt.subplots(figsize=(6, 2.5))
+            tiers = ["Low", "Moderate", "High"]
+            probs = [prob_low, prob_mod, prob_high]
+            colours = [LIGHT, BLUE, ACCENT]
+            bars = ax.barh(tiers, probs, color=colours, alpha=0.85, edgecolor="white")
+            for bar, p in zip(bars, probs):
+                ax.text(p + 0.01, bar.get_y() + bar.get_height() / 2,
+                        f"{p:.1%}", va="center", fontsize=10)
+            ax.set_xlim(0, 1)
+            ax.set_xlabel("Probability", fontsize=10)
+            ax.set_title("Risk Tier Probabilities", fontsize=11, fontweight="bold")
+            ax.axvline(0.5, color="red", linestyle="--", linewidth=0.8, alpha=0.5)
+            plt.tight_layout()
+            st.pyplot(fig)
+            plt.close()
+
+            # ── SHAP Waterfall ─────────────────────────────────────────
+            st.subheader("Step 5 — Why Was This Member Classified This Way?")
+            st.markdown(
+                "The SHAP waterfall shows the contribution of each feature to this specific "
+                "member's prediction. **Blue = pushes toward high risk · Red = pushes toward lower risk.**"
+            )
+
+            import xgboost as xgb
+            dmat = xgb.DMatrix(member_feat[model.feature_cols])
+            contribs = model.clf.get_booster().predict(dmat, pred_contribs=True)
+            n_feat   = len(model.feature_cols)
+            n_classes = len(model.label_enc.classes_)
+            high_risk_idx = list(model.label_enc.classes_).index("high")
+
+            if contribs.ndim == 3:
+                sv = contribs[0, high_risk_idx, :n_feat]
+            else:
+                stride = n_feat + 1
+                sv = contribs[0, high_risk_idx * stride : high_risk_idx * stride + n_feat]
+
+            # Top features by absolute contribution
+            top_n   = 15
+            abs_sv  = np.abs(sv)
+            top_idx = np.argsort(abs_sv)[::-1][:top_n]
+            sorted_idx   = top_idx[np.argsort(sv[top_idx])]
+            sorted_names = [model.feature_cols[i] for i in sorted_idx]
+            sorted_vals  = sv[sorted_idx]
+
+            fig, ax = plt.subplots(figsize=(10, 5))
+            colours_w = [ACCENT if v >= 0 else "#C0392B" for v in sorted_vals]
+            bars = ax.barh(range(len(sorted_names)), sorted_vals,
+                           color=colours_w, alpha=0.85, edgecolor="white")
+            ax.set_yticks(range(len(sorted_names)))
+            ax.set_yticklabels(sorted_names, fontsize=10)
+            ax.axvline(0, color="black", linewidth=1.0)
+            for bar, val in zip(bars, sorted_vals):
+                xpos = val + (0.001 if val >= 0 else -0.001)
+                ha   = "left" if val >= 0 else "right"
+                ax.text(xpos, bar.get_y() + bar.get_height() / 2,
+                        f"{val:+.3f}", va="center", ha=ha, fontsize=9)
+            ax.set_xlabel("SHAP Contribution to High-Risk Score", fontsize=11)
+            ax.set_title(
+                f"Why this member was classified {pred_tier.upper()}\n"
+                f"RAF {raf_score:.3f}  ·  Predicted cost ${pred_cost:,.0f}  ·  "
+                f"P(High) {prob_high:.1%}",
+                fontsize=11, fontweight="bold"
+            )
+            plt.tight_layout()
+            st.pyplot(fig)
+            plt.close()
+
+        except Exception as e:
+            st.error(f"Prediction error: {e}")
+            st.info("Make sure the pipeline has been run and all dependencies are installed.")
+
 
 if __name__ == "__main__":
     main()

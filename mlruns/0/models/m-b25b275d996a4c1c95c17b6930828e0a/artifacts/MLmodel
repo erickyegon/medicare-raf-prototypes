@@ -1,0 +1,22 @@
+artifact_path: file:///C:/2026 Projects/medicare-raf-prototypes/mlruns/0/models/m-b25b275d996a4c1c95c17b6930828e0a/artifacts
+flavors:
+  python_function:
+    data: model.ubj
+    env:
+      conda: conda.yaml
+      virtualenv: python_env.yaml
+    loader_module: mlflow.xgboost
+    python_version: 3.10.18
+  xgboost:
+    code: null
+    data: model.ubj
+    model_class: xgboost.sklearn.XGBRegressor
+    model_format: ubj
+    xgb_version: 3.2.0
+mlflow_version: 3.10.1
+model_id: m-b25b275d996a4c1c95c17b6930828e0a
+model_size_bytes: 718653
+model_uuid: m-b25b275d996a4c1c95c17b6930828e0a
+prompts: null
+run_id: 77959cda253a44ba82de3d14799cc438
+utc_time_created: '2026-03-25 10:41:46.094156'

@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(\"c:/2026 Projects/medicare-raf-prototypes/venv/Scripts/pip.exe\" show medicare-raf-analytics)",
+      "Bash(\"c:/2026 Projects/medicare-raf-prototypes/venv/Scripts/pip.exe\" show medicare_raf)",
+      "Bash(grep -n \"medicare_raf\\\\|sys.path\" \"c:/2026 Projects/medicare-raf-prototypes/tests/\"*.py)",
+      "Bash(\"c:/2026 Projects/medicare-raf-prototypes/venv/Scripts/python.exe\" -m pip install pydantic)",
+      "Bash(\"c:/2026 Projects/medicare-raf-prototypes/venv/Scripts/python.exe\" -m ensurepip --upgrade)",
+      "Bash(\"c:/2026 Projects/medicare-raf-prototypes/venv/Scripts/python.exe\" -c \"import pandas, numpy, sklearn, xgboost, statsmodels, scipy, matplotlib, seaborn, pyarrow, shap, streamlit, pydantic\")"
+    ]
+  }
+}
