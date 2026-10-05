@@ -376,15 +376,7 @@ This prototype uses synthetic data to demonstrate analytical methodology without
 
 ---
 
-## About
-
-**Erick K. Yegon, PhD** — Epidemiologist & Data Science Leader
-
-PhD Epidemiology · 17+ years in quantitative research, causal inference, and clinical performance analytics · 30+ peer-reviewed publications including *The Lancet* · h-index 10
-
-Particular interest in the application of rigorous causal inference methods to healthcare financial performance measurement — bridging the gap between population health science and value-based care economics.
-
-[LinkedIn](https://linkedin.com/in/erickyegon) · [GitHub](https://github.com/erickyegon) · [ORCID](https://orcid.org/0000-0002-7055-4848) · [Google Scholar](https://scholar.google.com)
+Author: Erick Kiprotich Yegon, epidemiologist and data scientist (real-world evidence, HEOR, causal inference) · Portfolio: https://erickyegon.github.io · LinkedIn: https://linkedin.com/in/erickyegon
 
 ---
 
