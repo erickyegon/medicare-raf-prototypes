@@ -11,13 +11,16 @@ N = 50,000 beneficiaries across two calendar years (baseline + intervention)
 covering a realistic ACO-like population distribution.
 """
 
+import re
+
 import numpy as np
 import pandas as pd
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 
 from ..modeling.hcc_mapper import ICD10_TO_HCC
 
 SEED = 42
+ICD10_PATTERN = re.compile(r"^[A-TV-Z][0-9][0-9A-Z](\.[0-9A-Z]{1,4}|[0-9A-Z]{0,4})$")
 
 
 class BeneficiaryRecord(BaseModel):
@@ -34,11 +37,12 @@ class BeneficiaryRecord(BaseModel):
     county_fips: str = Field(..., min_length=5, max_length=5)
     plan_type: str
 
-    @validator("icd10_codes")
+    @field_validator("icd10_codes")
+    @classmethod
     def validate_icd10_codes(cls, v):
-        """Validate ICD-10 codes are properly formatted."""
+        """Validate ICD-10-CM format: a letter (not U), a digit, then 1 to 5 alphanumerics, with an optional dot after the third character."""
         for code in v:
-            if not isinstance(code, str) or len(code) < 3:
+            if not isinstance(code, str) or not ICD10_PATTERN.match(code):
                 raise ValueError(f"Invalid ICD-10 code: {code}")
         return v
 

@@ -19,7 +19,7 @@ from medicare_raf.modeling.hcc_mapper import (
 )
 
 # ── Demographic base coefficients (community non-dual aged) ──────────────────
-# Age/sex coefficients from CMS v28 model
+# Illustrative age/sex coefficients; not checked against the official CMS-HCC v28 tables
 DEMOGRAPHIC_COEFFICIENTS = {
     # (age_band, sex) → coefficient
     ("65-69", "M"): 0.379,
@@ -62,6 +62,18 @@ def get_age_band(age: int) -> str:
         return "85-89"
     else:
         return "90+"
+
+
+def get_demographic_coefficient(age: int, sex: str, dual: bool = False) -> float:
+    """Return the age-sex demographic coefficient (community non-dual aged segment).
+
+    Dual-eligible coefficients are not modelled, so ``dual=True`` raises ``ValueError``.
+    """
+    if dual:
+        raise ValueError(
+            "Dual-eligible coefficients are not modelled; only the community non-dual aged segment is supported."
+        )
+    return DEMOGRAPHIC_COEFFICIENTS.get((get_age_band(age), sex), 0.40)
 
 
 def calculate_raf(

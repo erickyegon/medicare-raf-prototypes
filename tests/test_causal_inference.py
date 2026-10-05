@@ -21,7 +21,7 @@ class TestDifferenceInDifferences:
                 "bene_id": [f"B{i:03d}" for i in range(100)] * 2,
                 "year": [0] * 100 + [1] * 100,
                 "period": ["pre"] * 100 + ["post"] * 100,
-                "intervention": [1] * 50 + [0] * 50 * 2,
+                "intervention": ([1] * 50 + [0] * 50) * 2,
                 "total_cost": np.random.normal(8000, 1000, 200),
                 "age": np.random.normal(75, 5, 200),
                 "dual_eligible": np.random.choice([0, 1], 200),

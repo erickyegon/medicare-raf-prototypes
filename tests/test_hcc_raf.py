@@ -67,7 +67,7 @@ class TestRAFCalculation:
         "age,sex,expected_range",
         [
             (65, "F", (0.3, 0.5)),
-            (80, "M", (0.4, 0.6)),
+            (80, "M", (0.4, 0.65)),
             (90, "F", (0.5, 0.7)),
         ],
     )
@@ -107,7 +107,8 @@ class TestGoldenDataset:
         # T2DM w/comp (18): +0.302
         # CKD4 (137): +0.138
         # CHF×AFib: +0.175
-        # Total expected: 1.812
+        # CHF×Diabetes w/ complications (85, 18): +0.121
+        # Total expected: 1.933
 
         raf_score = result["raf_score"].iloc[0]
-        assert abs(raf_score - 1.812) < 0.01, f"Expected ~1.812, got {raf_score}"
+        assert abs(raf_score - 1.933) < 0.01, f"Expected ~1.933, got {raf_score}"

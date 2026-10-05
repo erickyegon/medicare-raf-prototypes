@@ -19,6 +19,8 @@ A rigorous analytical prototype for **Medicare Advantage and ACO clinical perfor
 
 **Built on synthetic data for methodological demonstration and shareability.**
 
+> **Status: prototype, known limitations.** The HCC coefficients, demographic coefficients and interaction terms in this repository are a selected subset for demonstration. They have not been checked against the official CMS-HCC v28 tables. Only the community non-dual aged segment is modelled; dual-eligible coefficients are not. Do not use the scores for payment, bidding or compliance purposes.
+
 ---
 
 ## The Problem This Solves
@@ -219,7 +221,7 @@ RAF = demographic_coefficient
 ```
 
 **Implementation details:**
-- Age-sex demographic coefficients for community non-dual aged segment (CY2024 v28)
+- Age-sex demographic coefficients for the community non-dual aged segment (illustrative values; see the note at the top)
 - 50+ ICD-10 code mappings covering highest-prevalence conditions: CHF, T2DM, CKD stages 1–6/ESRD, AFib, COPD, cancer (metastatic through site-specific), neurological, vascular
 - Six disease interaction terms: CHF×AFib, CHF×Diabetes, ESRD×CHF, ESRD×Diabetes, COPD×Diabetes, Cancer×CHF
 - PMPM cost estimation: `cost = RAF × $9,800` (2023 Medicare FFS baseline)
@@ -234,8 +236,9 @@ RAF = demographic_coefficient
 | T2DM w/ complications (HCC 18) | +0.302 |
 | CKD Stage 4 (HCC 137) | +0.138 |
 | CHF × AFib interaction | +0.175 |
-| **Total RAF** | **1.812** |
-| **Estimated annual cost** | **$17,758** |
+| CHF × Diabetes w/ complications interaction | +0.121 |
+| **Total RAF** | **1.933** |
+| **Estimated annual cost** | **$18,943** |
 
 ### 2 · Clinical Risk Stratification (XGBoost)
 
