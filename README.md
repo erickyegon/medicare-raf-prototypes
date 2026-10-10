@@ -2,7 +2,7 @@
 
 <p align="left">
   <img src="https://img.shields.io/badge/Python-3.10%2B-blue?logo=python&logoColor=white" />
-  <img src="https://img.shields.io/badge/CMS%20HCC-v28%20Model-1B4F72" />
+  <img src="https://img.shields.io/badge/CMS%20HCC-v28%20illustrative%20subset-1B4F72" />
   <img src="https://img.shields.io/badge/Causal%20Inference-DiD%20%7C%20PSM-2E86C1" />
   <img src="https://img.shields.io/badge/ML-XGBoost-orange?logo=xgboost" />
   <img src="https://img.shields.io/badge/Domain-Value--Based%20Care-green" />
